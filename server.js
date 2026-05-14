@@ -677,6 +677,45 @@ async function handleLoadDeck(request, response, roomCode, deckId) {
   }
 }
 
+async function handleImportDeck(request, response, roomCode) {
+  const payload = await collectJson(request);
+
+  try {
+    const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
+    assertHost(room, player.id);
+    assertLobby(room);
+
+    if (!Array.isArray(payload.cards) || !payload.cards.length) {
+      throw Object.assign(new Error("Envie pelo menos uma carta para carregar o deck."), {
+        statusCode: 422
+      });
+    }
+
+    const importedCards = payload.cards.map((card) => validateCardInput(card));
+
+    room.cards = importedCards.map((card) => ({
+      id: randomUUID(),
+      title: card.title,
+      category: card.category,
+      question: card.question,
+      color: card.color,
+      authorId: player.id,
+      authorName: player.name
+    }));
+    room.currentCardId = null;
+    room.drawPile = [];
+    room.activePlayerId = null;
+    touchRoom(room);
+    broadcastRoom(room);
+
+    sendJson(response, 200, {
+      state: serializeRoom(room, player.id)
+    });
+  } catch (error) {
+    sendError(response, error.statusCode || 400, error.message);
+  }
+}
+
 async function handleDeleteDeck(request, response, roomCode, deckId) {
   const payload = await collectJson(request);
 
@@ -871,6 +910,11 @@ async function handleApi(request, response, pathname, url) {
 
   if (request.method === "POST" && segments[3] === "decks" && segments[4] === "save") {
     await handleSaveDeck(request, response, roomCode);
+    return true;
+  }
+
+  if (request.method === "POST" && segments[3] === "decks" && segments[4] === "import") {
+    await handleImportDeck(request, response, roomCode);
     return true;
   }
 

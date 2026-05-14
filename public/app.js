@@ -1,4 +1,5 @@
 const SESSION_KEY = "carta-viva-session";
+const LOCAL_DECKS_KEY = "carta-viva-local-decks";
 
 const state = {
   room: null,
@@ -245,6 +246,96 @@ function clearSession() {
   window.localStorage.removeItem(SESSION_KEY);
 }
 
+function normalizeSingleLine(value, maxLength, fallback = "") {
+  const cleaned = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return (cleaned || fallback).slice(0, maxLength);
+}
+
+function normalizeMultiLine(value, maxLength) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizeCardColor(value) {
+  const cleaned = String(value || "").trim();
+  return /^#([\da-f]{3}|[\da-f]{6})$/i.test(cleaned) ? cleaned : "#c79d51";
+}
+
+function createLocalDeckId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return `deck-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function mapCardsForLocalDeck(cards) {
+  return cards
+    .map((card) => ({
+      title: normalizeSingleLine(card.title, 36, "Carta sem titulo"),
+      category: normalizeSingleLine(card.category, 24, "Pergunta"),
+      question: normalizeMultiLine(card.question, 280),
+      color: normalizeCardColor(card.color)
+    }))
+    .filter((card) => card.question);
+}
+
+function normalizeStoredDeck(deck) {
+  const cards = mapCardsForLocalDeck(Array.isArray(deck?.cards) ? deck.cards : []);
+
+  if (!cards.length) {
+    return null;
+  }
+
+  const createdAt = Number(deck?.createdAt) || Date.now();
+  const updatedAt = Number(deck?.updatedAt) || createdAt;
+
+  return {
+    id: typeof deck?.id === "string" && deck.id ? deck.id : createLocalDeckId(),
+    name: normalizeSingleLine(deck?.name, 40, "Deck sem nome"),
+    cards,
+    cardCount: cards.length,
+    previewQuestion: cards[0]?.question || "",
+    createdAt,
+    updatedAt
+  };
+}
+
+function loadLocalDeckLibrary() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_DECKS_KEY) || "[]");
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map(normalizeStoredDeck)
+      .filter(Boolean)
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+  } catch (error) {
+    return [];
+  }
+}
+
+function persistLocalDeckLibrary(decks) {
+  const serializableDecks = decks.map((deck) => ({
+    id: deck.id,
+    name: deck.name,
+    cards: mapCardsForLocalDeck(deck.cards || []),
+    createdAt: deck.createdAt,
+    updatedAt: deck.updatedAt
+  }));
+
+  window.localStorage.setItem(LOCAL_DECKS_KEY, JSON.stringify(serializableDecks));
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     method: options.method || "GET",
@@ -264,16 +355,7 @@ async function api(path, options = {}) {
 }
 
 async function refreshSavedDecks() {
-  if (!state.room) {
-    state.savedDecks = [];
-    return;
-  }
-
-  const payload = await api(
-    `/api/rooms/${encodeURIComponent(state.room.roomCode)}/decks?playerId=${encodeURIComponent(state.room.viewerId)}`
-  );
-
-  state.savedDecks = payload.decks || [];
+  state.savedDecks = loadLocalDeckLibrary();
 }
 
 function session() {
@@ -1371,6 +1453,170 @@ async function handleSaveDeck() {
     renderSavedDecks(state.room);
     elements.deckNameInput.value = payload.savedDeck?.name || elements.deckNameInput.value;
     showToast(`Deck ${payload.savedDeck?.name || "salvo"} guardado.`);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function getDeckCardCount(deck) {
+  if (Array.isArray(deck.cards)) {
+    return deck.cards.length;
+  }
+
+  return Number(deck.cardCount) || 0;
+}
+
+function getDeckPreviewQuestion(deck) {
+  if (deck.previewQuestion) {
+    return deck.previewQuestion;
+  }
+
+  return deck.cards?.[0]?.question || "";
+}
+
+function renderSavedDecks(room) {
+  elements.savedDecksList.replaceChildren();
+  elements.savedDecksCount.textContent = String(state.savedDecks.length);
+
+  if (!state.savedDecks.length) {
+    const emptyState = document.createElement("article");
+    emptyState.className = "saved-deck-empty";
+    emptyState.append(createTextElement("strong", "Nenhum deck salvo neste navegador"));
+    emptyState.append(
+      createTextElement(
+        "p",
+        "Salve o baralho atual para reutilizar estas cartas neste PC, mesmo sem plano pago."
+      )
+    );
+    elements.savedDecksList.append(emptyState);
+    return;
+  }
+
+  state.savedDecks.forEach((deck) => {
+    const card = document.createElement("article");
+    card.className = "saved-deck-card";
+
+    const cardCount = getDeckCardCount(deck);
+    const header = document.createElement("div");
+    header.className = "saved-deck-card__head";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "saved-deck-card__title";
+    titleWrap.append(createTextElement("strong", deck.name));
+    titleWrap.append(
+      createTextElement(
+        "small",
+        `${cardCount} carta${cardCount === 1 ? "" : "s"}${deck.updatedAt ? ` • ${formatDeckTimestamp(deck.updatedAt)}` : ""}`
+      )
+    );
+
+    header.append(titleWrap);
+    header.append(createTextElement("span", String(cardCount), "number-pill"));
+    card.append(header);
+
+    const previewQuestion = getDeckPreviewQuestion(deck);
+
+    if (previewQuestion) {
+      card.append(createTextElement("p", previewQuestion, "saved-deck-card__preview"));
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "saved-deck-card__actions";
+
+    const canManage = room.isHost && room.phase === "lobby";
+
+    const loadButton = createTextElement("button", "Carregar", "mini-btn");
+    loadButton.type = "button";
+    loadButton.disabled = !canManage;
+    loadButton.addEventListener("click", async () => {
+      try {
+        const payload = await api(`/api/rooms/${room.roomCode}/decks/import`, {
+          method: "POST",
+          body: {
+            playerId: room.viewerId,
+            name: deck.name,
+            cards: deck.cards || []
+          }
+        });
+
+        if (payload.state) {
+          applyRoom(payload.state);
+        }
+
+        showToast(`Deck ${deck.name} carregado.`);
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+
+    const deleteButton = createTextElement("button", "Excluir", "mini-btn");
+    deleteButton.type = "button";
+    deleteButton.disabled = !canManage;
+    deleteButton.addEventListener("click", () => {
+      state.savedDecks = state.savedDecks.filter((item) => item.id !== deck.id);
+      persistLocalDeckLibrary(state.savedDecks);
+      renderSavedDecks(room);
+      showToast(`Deck ${deck.name} removido do navegador.`);
+    });
+
+    actions.append(loadButton, deleteButton);
+    card.append(actions);
+    elements.savedDecksList.append(card);
+  });
+}
+
+async function handleSaveDeck() {
+  if (!state.room) {
+    return;
+  }
+
+  try {
+    if (!state.room.cards.length) {
+      throw new Error("Adicione pelo menos uma carta antes de salvar o deck.");
+    }
+
+    const name = normalizeSingleLine(
+      elements.deckNameInput.value,
+      40,
+      `Deck ${state.room.roomCode}`
+    );
+    const cards = mapCardsForLocalDeck(state.room.cards);
+
+    if (!cards.length) {
+      throw new Error("Esse deck nao tem perguntas validas para salvar.");
+    }
+
+    const now = Date.now();
+    const existingDeck = state.savedDecks.find(
+      (deck) => deck.name.toLowerCase() === name.toLowerCase()
+    );
+    let savedDeck;
+
+    if (existingDeck) {
+      existingDeck.name = name;
+      existingDeck.cards = cards;
+      existingDeck.cardCount = cards.length;
+      existingDeck.previewQuestion = cards[0]?.question || "";
+      existingDeck.updatedAt = now;
+      savedDeck = existingDeck;
+    } else {
+      savedDeck = {
+        id: createLocalDeckId(),
+        name,
+        cards,
+        cardCount: cards.length,
+        previewQuestion: cards[0]?.question || "",
+        createdAt: now,
+        updatedAt: now
+      };
+      state.savedDecks.unshift(savedDeck);
+    }
+
+    state.savedDecks.sort((left, right) => right.updatedAt - left.updatedAt);
+    persistLocalDeckLibrary(state.savedDecks);
+    renderSavedDecks(state.room);
+    elements.deckNameInput.value = savedDeck.name;
+    showToast(`Deck ${savedDeck.name} salvo neste navegador.`);
   } catch (error) {
     showToast(error.message);
   }
