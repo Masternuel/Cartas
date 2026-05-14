@@ -1,0 +1,9 @@
+{
+  "name": "carta-viva",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Jogo de cartas com perguntas customizaveis e salas multiplayer.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

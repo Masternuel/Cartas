@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Carta Viva</title>
+    <meta
+      name="description"
+      content="Jogo de cartas com perguntas customizaveis, salas compartilhadas e rodada multiplayer em tempo real."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <section id="welcome-screen" class="welcome-layout">
+        <div class="hero-card panel">
+          <p class="eyebrow">Jogo de perguntas em cartas</p>
+          <h1>Carta Viva</h1>
+          <p class="hero-copy">
+            Monte seu proprio baralho, convide amigos por codigo e revele as
+            perguntas em uma rodada sincronizada para todo mundo.
+          </p>
+          <div class="feature-row">
+            <span>Cartas customizaveis</span>
+            <span>Salas em tempo real</span>
+            <span>Fluxo simples para celular e desktop</span>
+          </div>
+        </div>
+
+        <div class="entry-stack">
+          <form id="create-room-form" class="panel auth-card">
+            <p class="card-kicker">Criar sala</p>
+            <h2>Comece uma partida nova</h2>
+            <label class="field">
+              <span>Seu nome</span>
+              <input
+                id="create-name"
+                name="name"
+                type="text"
+                maxlength="24"
+                placeholder="Ex.: Marina"
+                required
+              />
+            </label>
+            <button type="submit" class="primary-btn">Criar sala agora</button>
+          </form>
+
+          <form id="join-room-form" class="panel auth-card">
+            <p class="card-kicker">Entrar em sala</p>
+            <h2>Use um codigo compartilhado</h2>
+            <label class="field">
+              <span>Seu nome</span>
+              <input
+                id="join-name"
+                name="name"
+                type="text"
+                maxlength="24"
+                placeholder="Ex.: Leo"
+                required
+              />
+            </label>
+            <label class="field">
+              <span>Codigo da sala</span>
+              <input
+                id="join-code"
+                name="roomCode"
+                type="text"
+                maxlength="5"
+                placeholder="AB12C"
+                autocomplete="off"
+                required
+              />
+            </label>
+            <button type="submit" class="secondary-btn">Entrar na partida</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="game-screen" class="game-shell hidden">
+        <button
+          id="open-room-menu-btn"
+          class="room-menu-toggle"
+          type="button"
+          aria-label="Abrir menu da sala"
+          aria-controls="room-drawer"
+          aria-expanded="false"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+
+        <div id="room-menu-overlay" class="room-menu-overlay"></div>
+
+        <aside id="room-drawer" class="room-drawer" aria-label="Menu lateral da sala">
+          <div class="room-drawer__header">
+            <div>
+              <p class="card-kicker">Carta Viva</p>
+              <h2>Sala <span id="drawer-room-code">-----</span></h2>
+            </div>
+
+            <button
+              id="close-room-menu-btn"
+              class="room-drawer__close"
+              type="button"
+              aria-label="Fechar menu da sala"
+            >
+              X
+            </button>
+          </div>
+
+          <div class="room-drawer__body">
+            <section class="room-drawer__section">
+              <p class="card-kicker">Navegacao</p>
+              <nav class="room-tabs" aria-label="Abas da sala">
+                <button id="tab-start" class="room-tab is-active" type="button" data-tab="start">
+                  Inicio
+                </button>
+                <button id="tab-table" class="room-tab" type="button" data-tab="table">
+                  Mesa
+                </button>
+                <button id="tab-cards" class="room-tab" type="button" data-tab="cards">
+                  Editar cartas
+                </button>
+              </nav>
+            </section>
+
+            <section class="room-drawer__section">
+              <p class="card-kicker">Resumo</p>
+              <div class="room-drawer__stats">
+                <span>Sala <strong id="drawer-room-code-inline">-----</strong></span>
+                <span>Cartas <strong id="total-cards-stat">0</strong></span>
+                <span>Reveladas <strong id="revealed-cards-stat">0</strong></span>
+                <span>Restantes <strong id="remaining-cards-stat">0</strong></span>
+              </div>
+              <p id="drawer-board-copy" class="room-drawer__copy">
+                Personalize as cartas no lobby e use o anfitriao para controlar a rodada.
+              </p>
+            </section>
+
+            <section class="room-drawer__section">
+              <div class="room-drawer__section-head">
+                <div>
+                  <p class="card-kicker">Participantes</p>
+                  <h3>Quem esta na sala</h3>
+                </div>
+                <span id="drawer-players-count" class="number-pill">0</span>
+              </div>
+              <div id="drawer-players-list" class="drawer-players-list"></div>
+            </section>
+
+            <section class="room-drawer__section">
+              <p class="card-kicker">Acoes</p>
+              <div class="room-drawer__actions">
+                <button id="start-game-btn" type="button" class="primary-btn">
+                  Comecar rodada
+                </button>
+                <button id="next-card-btn" type="button" class="secondary-btn">
+                  Proxima carta
+                </button>
+                <button id="reset-game-btn" type="button" class="ghost-btn">
+                  Voltar ao lobby
+                </button>
+                <button id="copy-room-btn" class="ghost-btn" type="button">
+                  Copiar convite
+                </button>
+                <button id="leave-room-btn" class="ghost-btn danger-btn" type="button">
+                  Sair da sala
+                </button>
+              </div>
+            </section>
+          </div>
+        </aside>
+
+        <section id="start-view" class="room-view room-view--start">
+          <div class="start-layout">
+            <header class="panel start-hero">
+              <div class="start-hero__main">
+                <p class="eyebrow">Carta Viva</p>
+                <h2>Sala <span id="room-code">-----</span></h2>
+                <p id="board-subtitle" class="board-subtitle">
+                  Personalize as cartas no lobby e use o anfitriao para controlar a rodada.
+                </p>
+              </div>
+
+              <div class="start-hero__actions">
+                <div class="status-pill">
+                  <span id="connection-indicator" class="status-dot"></span>
+                  <span id="connection-text">Conectando</span>
+                </div>
+                <span class="phase-pill" id="start-phase-pill">Lobby</span>
+              </div>
+            </header>
+
+            <div class="start-grid">
+              <section class="panel start-panel">
+                <div class="section-heading">
+                  <div>
+                    <p class="card-kicker">Participantes</p>
+                    <h3>Quem esta na sala</h3>
+                  </div>
+                  <span id="players-count" class="number-pill">0</span>
+                </div>
+                <div id="players-list" class="players-list"></div>
+              </section>
+
+              <section class="panel start-panel">
+                <div class="section-heading">
+                  <div>
+                    <p class="card-kicker">Resumo da rodada</p>
+                    <h3 id="board-title">Monte o baralho e inicie quando estiver pronto</h3>
+                  </div>
+                </div>
+
+                <div class="table-stats-inline">
+                  <span>Cartas <strong id="start-total-cards-stat">0</strong></span>
+                  <span>Reveladas <strong id="start-revealed-cards-stat">0</strong></span>
+                  <span>Restantes <strong id="start-remaining-cards-stat">0</strong></span>
+                </div>
+
+                <div class="start-shortcuts">
+                  <button class="ghost-btn" type="button" data-open-tab="table">Abrir mesa</button>
+                  <button class="ghost-btn" type="button" data-open-tab="cards">Editar cartas</button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section id="table-view" class="room-view room-view--table hidden">
+          <div id="current-card-slot" class="current-card-slot current-card-slot--fullscreen"></div>
+        </section>
+
+        <section id="cards-view" class="room-view room-view--cards hidden">
+          <div class="cards-layout">
+            <section class="panel editor-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="card-kicker">Editor de cartas</p>
+                  <h3 id="editor-title">Nova carta</h3>
+                </div>
+                <span class="phase-pill" id="editor-phase">Lobby</span>
+              </div>
+
+              <form id="card-form" class="card-form">
+                <fieldset id="card-form-fieldset">
+                  <label class="field">
+                    <span>Titulo</span>
+                    <input id="card-title" name="title" type="text" maxlength="36" />
+                  </label>
+
+                  <label class="field">
+                    <span>Categoria</span>
+                    <input
+                      id="card-category"
+                      name="category"
+                      type="text"
+                      maxlength="24"
+                      placeholder="Ex.: Humor"
+                    />
+                  </label>
+
+                  <label class="field">
+                    <span>Pergunta</span>
+                    <textarea
+                      id="card-question"
+                      name="question"
+                      rows="4"
+                      maxlength="280"
+                      placeholder="Digite a pergunta que vai aparecer na carta..."
+                      required
+                    ></textarea>
+                  </label>
+
+                  <input id="card-color" name="color" type="hidden" value="#c79d51" />
+                  <p class="card-style-note">
+                    A arte das cartas segue o modelo fixo do baralho:
+                    frente clara para a pergunta e verso escuro para o lado de tras.
+                  </p>
+                </fieldset>
+
+                <div class="form-actions">
+                  <button id="save-card-btn" type="submit" class="primary-btn">
+                    Salvar carta
+                  </button>
+                  <button id="cancel-edit-btn" type="button" class="ghost-btn hidden">
+                    Cancelar edicao
+                  </button>
+                </div>
+              </form>
+
+              <section class="deck-save-box">
+                <div class="section-heading">
+                  <div>
+                    <p class="card-kicker">Biblioteca</p>
+                    <h3>Salvar deck</h3>
+                  </div>
+                </div>
+
+                <label class="field">
+                  <span>Nome do deck</span>
+                  <input
+                    id="deck-name"
+                    name="deckName"
+                    type="text"
+                    maxlength="40"
+                    placeholder="Ex.: Perguntas de festa"
+                  />
+                </label>
+
+                <button id="save-deck-btn" type="button" class="secondary-btn">
+                  Salvar deck atual
+                </button>
+              </section>
+            </section>
+
+            <section class="panel deck-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="card-kicker">Baralho colaborativo</p>
+                  <h3>Cartas da sala</h3>
+                </div>
+                <span id="deck-count-pill" class="number-pill">0</span>
+              </div>
+              <div id="deck-list" class="deck-list"></div>
+
+              <div class="saved-decks-section">
+                <div class="section-heading">
+                  <div>
+                    <p class="card-kicker">Decks salvos</p>
+                    <h3>Biblioteca da sala</h3>
+                  </div>
+                  <span id="saved-decks-count" class="number-pill">0</span>
+                </div>
+
+                <div id="saved-decks-list" class="saved-decks-list"></div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+    <audio id="shuffle-audio" src="/embaralhando.mp3" preload="auto"></audio>
+    <audio id="draw-audio" src="/puxando-carta.mp3" preload="auto"></audio>
+    <audio id="finish-audio" src="/thanks-finish.wav" preload="auto"></audio>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
