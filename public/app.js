@@ -1050,8 +1050,8 @@ function renderCurrentCard(room) {
     const helper = createTextElement(
       "small",
       viewer?.isReady
-        ? `Voce marcou pronto. ${readyCount} de ${room.players.length} jogador${room.players.length === 1 ? "" : "es"} confirmado${readyCount === 1 ? "" : "s"}.`
-        : `${readyCount} de ${room.players.length} jogador${room.players.length === 1 ? "" : "es"} pronto${readyCount === 1 ? "" : "s"}.`,
+        ? `Voce marcou pronto. ${readyCount} de ${room.players.length} jogador${room.players.length === 1 ? "" : "es"} confirmado${readyCount === 1 ? "" : "s"}. Quando todos estiverem prontos, a rodada comeca sozinha.`
+        : `${readyCount} de ${room.players.length} jogador${room.players.length === 1 ? "" : "es"} pronto${readyCount === 1 ? "" : "s"}. Quando todos confirmarem, a rodada comeca sozinha.`,
       "table-ready-copy"
     );
 
@@ -1266,7 +1266,7 @@ function renderBoardCopy(room) {
   if (room.phase === "lobby") {
     elements.boardTitle.textContent = "Prepare a mesa e distribua os jogadores";
     elements.boardSubtitle.textContent =
-      "As cartas ficam editaveis apenas no lobby. Quando a rodada comecar, a bolinha vai marcar de quem e a vez.";
+      "As cartas ficam editaveis apenas no lobby. Quando todos marcarem pronto, a rodada comeca automaticamente.";
     return;
   }
 
@@ -1347,7 +1347,7 @@ function render() {
   elements.nextCardButton.disabled = !room.isHost || room.phase !== "playing" || !room.currentCard;
   elements.resetGameButton.disabled = !room.isHost || room.phase === "lobby";
   elements.startGameButton.textContent =
-    room.phase === "lobby" ? "Comecar rodada" : "Reiniciar rodada";
+    room.phase === "lobby" ? "Comecar rodada agora" : "Reiniciar rodada";
 
   setActiveTab(state.activeTab);
 }
@@ -1430,29 +1430,6 @@ async function handleCardSubmit(event) {
     await api(path, { method, body });
     resetEditor();
     showToast(wasEditing ? "Carta atualizada." : "Carta criada.");
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
-async function handleSaveDeck() {
-  if (!state.room) {
-    return;
-  }
-
-  try {
-    const payload = await api(`/api/rooms/${state.room.roomCode}/decks/save`, {
-      method: "POST",
-      body: {
-        playerId: state.room.viewerId,
-        name: elements.deckNameInput.value
-      }
-    });
-
-    state.savedDecks = payload.decks || [];
-    renderSavedDecks(state.room);
-    elements.deckNameInput.value = payload.savedDeck?.name || elements.deckNameInput.value;
-    showToast(`Deck ${payload.savedDeck?.name || "salvo"} guardado.`);
   } catch (error) {
     showToast(error.message);
   }

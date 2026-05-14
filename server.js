@@ -384,6 +384,25 @@ function mapCardsForDeck(cards) {
   }));
 }
 
+function canAutoStartRoom(room) {
+  return (
+    room.phase === "lobby" &&
+    room.cards.length > 0 &&
+    room.players.length > 0 &&
+    room.players.every((player) => player.isReady)
+  );
+}
+
+function startRoomRound(room) {
+  room.phase = "playing";
+  room.drawPile = shuffle(room.cards.map((card) => card.id));
+  room.currentCardId = room.drawPile.shift() || null;
+  room.activePlayerId = room.players[0]?.id || null;
+  room.players.forEach((currentPlayer) => {
+    currentPlayer.isReady = false;
+  });
+}
+
 async function handleCreateRoom(request, response) {
   const payload = await collectJson(request);
   const { room, playerId } = createRoom(payload.name);
@@ -754,6 +773,11 @@ async function handleSetReady(request, response, roomCode) {
     }
 
     player.isReady = payload.ready !== false;
+
+    if (canAutoStartRoom(room)) {
+      startRoomRound(room);
+    }
+
     touchRoom(room);
     broadcastRoom(room);
 
@@ -776,13 +800,7 @@ async function handleStartGame(request, response, roomCode) {
       throw Object.assign(new Error("Adicione pelo menos uma carta antes de iniciar."), { statusCode: 409 });
     }
 
-    room.phase = "playing";
-    room.drawPile = shuffle(room.cards.map((card) => card.id));
-    room.currentCardId = room.drawPile.shift() || null;
-    room.activePlayerId = room.players[0]?.id || null;
-    room.players.forEach((currentPlayer) => {
-      currentPlayer.isReady = false;
-    });
+    startRoomRound(room);
     touchRoom(room);
     broadcastRoom(room);
 
