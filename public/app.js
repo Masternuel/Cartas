@@ -1,5 +1,6 @@
 const SESSION_KEY = "carta-viva-session";
 const LOCAL_DECKS_KEY = "carta-viva-local-decks";
+const AUDIO_VOLUME_KEY = "carta-viva-audio-volume";
 
 const state = {
   room: null,
@@ -16,7 +17,8 @@ const state = {
   animationToken: 0,
   animationTimer: null,
   animationResetTimer: null,
-  audioPrimed: false
+  audioPrimed: false,
+  audioVolume: 0.45
 };
 
 const elements = {
@@ -77,9 +79,12 @@ const elements = {
   deckList: document.getElementById("deck-list"),
   savedDecksCount: document.getElementById("saved-decks-count"),
   savedDecksList: document.getElementById("saved-decks-list"),
+  audioVolume: document.getElementById("audio-volume"),
+  audioVolumeValue: document.getElementById("audio-volume-value"),
   shuffleAudio: document.getElementById("shuffle-audio"),
   drawAudio: document.getElementById("draw-audio"),
   finishAudio: document.getElementById("finish-audio"),
+  lobbyAudio: document.getElementById("lobby-audio"),
   toast: document.getElementById("toast")
 };
 
@@ -156,9 +161,10 @@ function primeAudio() {
   }
 
   state.audioPrimed = true;
-  [elements.shuffleAudio, elements.drawAudio, elements.finishAudio].forEach((audioElement) => {
+  getManagedAudioElements().forEach((audioElement) => {
     audioElement?.load();
   });
+  syncLobbyAudio();
 }
 
 async function playAudio(audioElement) {
@@ -193,6 +199,7 @@ function triggerTableAnimation(kind) {
 
   if (kind === "intro") {
     stopAudio(elements.finishAudio);
+    stopAudio(elements.lobbyAudio);
     state.tableAnimation = "shuffle";
     stopAudio(elements.drawAudio);
     playAudio(elements.shuffleAudio);
@@ -217,6 +224,7 @@ function triggerTableAnimation(kind) {
   if (kind === "draw") {
     stopAudio(elements.finishAudio);
     stopAudio(elements.shuffleAudio);
+    stopAudio(elements.lobbyAudio);
     state.tableAnimation = "reveal";
     state.animateCardReveal = true;
     playAudio(elements.drawAudio);
@@ -227,6 +235,7 @@ function triggerTableAnimation(kind) {
 
   stopAudio(elements.shuffleAudio);
   stopAudio(elements.finishAudio);
+  stopAudio(elements.lobbyAudio);
   state.tableAnimation = "idle";
 }
 
@@ -244,6 +253,74 @@ function saveSession(session) {
 
 function clearSession() {
   window.localStorage.removeItem(SESSION_KEY);
+}
+
+function loadStoredAudioVolume() {
+  try {
+    const rawValue = Number(window.localStorage.getItem(AUDIO_VOLUME_KEY));
+
+    if (Number.isFinite(rawValue)) {
+      return Math.min(1, Math.max(0, rawValue));
+    }
+  } catch (error) {
+    return 0.45;
+  }
+
+  return 0.45;
+}
+
+function getManagedAudioElements() {
+  return [
+    elements.shuffleAudio,
+    elements.drawAudio,
+    elements.finishAudio,
+    elements.lobbyAudio
+  ].filter(Boolean);
+}
+
+function applyAudioVolume() {
+  const normalizedVolume = Math.min(1, Math.max(0, state.audioVolume));
+
+  getManagedAudioElements().forEach((audioElement) => {
+    audioElement.volume = normalizedVolume;
+  });
+
+  if (elements.audioVolume) {
+    elements.audioVolume.value = String(Math.round(normalizedVolume * 100));
+  }
+
+  if (elements.audioVolumeValue) {
+    elements.audioVolumeValue.textContent = `${Math.round(normalizedVolume * 100)}%`;
+  }
+}
+
+function setAudioVolume(nextVolume) {
+  state.audioVolume = Math.min(1, Math.max(0, nextVolume));
+  window.localStorage.setItem(AUDIO_VOLUME_KEY, String(state.audioVolume));
+  applyAudioVolume();
+}
+
+function syncLobbyAudio() {
+  const shouldPlay = Boolean(state.room && state.room.phase === "lobby" && state.audioPrimed);
+
+  if (!shouldPlay) {
+    stopAudio(elements.lobbyAudio);
+    return;
+  }
+
+  if (!elements.lobbyAudio.paused) {
+    return;
+  }
+
+  elements.lobbyAudio.currentTime = 0;
+  elements.lobbyAudio.play().catch(() => {
+    elements.lobbyAudio.pause();
+  });
+}
+
+function initializeAudioPreferences() {
+  state.audioVolume = loadStoredAudioVolume();
+  applyAudioVolume();
 }
 
 function normalizeSingleLine(value, maxLength, fallback = "") {
@@ -464,6 +541,10 @@ function applyRoom(snapshot) {
     state.tableAnimation = "idle";
   }
 
+  if (snapshot.phase !== "lobby") {
+    stopAudio(elements.lobbyAudio);
+  }
+
   if (snapshot.phase !== "finished") {
     stopAudio(elements.finishAudio);
   }
@@ -484,6 +565,7 @@ function applyRoom(snapshot) {
     playAudio(elements.finishAudio);
   }
 
+  syncLobbyAudio();
   render();
 }
 
@@ -524,6 +606,7 @@ function disconnectFromRoom(clearRemote = true) {
   stopAudio(elements.shuffleAudio);
   stopAudio(elements.drawAudio);
   stopAudio(elements.finishAudio);
+  stopAudio(elements.lobbyAudio);
   state.room = null;
   state.savedDecks = [];
   state.activeTab = "start";
@@ -1674,6 +1757,9 @@ function bindEvents() {
   elements.joinRoomForm.addEventListener("submit", handleJoinRoom);
   elements.cardForm.addEventListener("submit", handleCardSubmit);
   elements.saveDeckButton.addEventListener("click", handleSaveDeck);
+  elements.audioVolume.addEventListener("input", (event) => {
+    setAudioVolume(Number(event.currentTarget.value) / 100);
+  });
   elements.cancelEditButton.addEventListener("click", resetEditor);
   elements.openRoomMenuButton.addEventListener("click", () => setRoomMenuOpen(!state.menuOpen));
   elements.closeRoomMenuButton.addEventListener("click", () => setRoomMenuOpen(false));
@@ -1721,6 +1807,7 @@ function bindEvents() {
   });
 }
 
+initializeAudioPreferences();
 hydrateInviteCodeFromUrl();
 bindEvents();
 attemptReconnect();

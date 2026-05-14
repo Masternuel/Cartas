@@ -699,6 +699,37 @@ fieldset {
   line-height: 1.65;
 }
 
+.drawer-audio-box {
+  display: grid;
+  gap: 1rem;
+}
+
+.drawer-audio-box__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.drawer-audio-box__head p {
+  margin: 0.45rem 0 0;
+  color: var(--text-soft);
+  line-height: 1.55;
+  font-size: 0.92rem;
+}
+
+.drawer-audio-box__control {
+  display: grid;
+  gap: 0.75rem;
+  color: rgba(255, 247, 237, 0.88);
+  font-size: 0.92rem;
+}
+
+.drawer-audio-box__control input[type="range"] {
+  width: 100%;
+  accent-color: #55f3a2;
+}
+
 .drawer-players-list,
 .room-drawer__actions {
   display: grid;
