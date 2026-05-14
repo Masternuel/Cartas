@@ -1,6 +1,7 @@
 const SESSION_KEY = "carta-viva-session";
 const LOCAL_DECKS_KEY = "carta-viva-local-decks";
 const AUDIO_VOLUME_KEY = "carta-viva-audio-volume";
+const DEFAULT_AUDIO_VOLUME = 0.05;
 
 const state = {
   room: null,
@@ -18,7 +19,7 @@ const state = {
   animationTimer: null,
   animationResetTimer: null,
   audioPrimed: false,
-  audioVolume: 0.45
+  audioVolume: DEFAULT_AUDIO_VOLUME
 };
 
 const elements = {
@@ -263,10 +264,10 @@ function loadStoredAudioVolume() {
       return Math.min(1, Math.max(0, rawValue));
     }
   } catch (error) {
-    return 0.45;
+    return DEFAULT_AUDIO_VOLUME;
   }
 
-  return 0.45;
+  return DEFAULT_AUDIO_VOLUME;
 }
 
 function getManagedAudioElements() {
