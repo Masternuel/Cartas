@@ -14,6 +14,7 @@ const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_PLAYERS_PER_ROOM = 12;
 const MAX_CHAT_MESSAGES = 80;
 const MAX_CHAT_LENGTH = 220;
+const MAX_ROOM_REACTIONS = 18;
 const DEFAULT_CARD_THEME_ID = "azure-whisper";
 const DEFAULT_BACKGROUND_ID = "midnight-veil";
 const DEFAULT_CARDS_PER_ROUND = 0;
@@ -44,6 +45,21 @@ const BACKGROUND_IDS = new Set([
   "stargazer-blue",
   "ember-parlor"
 ]);
+const REACTION_META = {
+  haha: {
+    label: "Haha"
+  },
+  wow: {
+    label: "Uau"
+  },
+  apoio: {
+    label: "Apoio"
+  },
+  caos: {
+    label: "Caos"
+  }
+};
+const REACTION_IDS = new Set(Object.keys(REACTION_META));
 const rooms = new Map();
 let savedDecks = [];
 let database = null;
@@ -199,6 +215,16 @@ function normalizeStoredRoomRecord(record) {
       }))
       .filter((message) => message.text)
       .slice(-MAX_CHAT_MESSAGES),
+    reactions: (Array.isArray(record?.reactions) ? record.reactions : [])
+      .map((reaction) => ({
+        id: cleanSingleLine(reaction?.id, 64, randomUUID()),
+        playerId: cleanSingleLine(reaction?.playerId, 64, "system"),
+        playerName: cleanSingleLine(reaction?.playerName, 24, "Sala"),
+        kind: validateReactionKind(reaction?.kind),
+        createdAt: Number(reaction?.createdAt) || updatedAt
+      }))
+      .filter((reaction) => reaction.createdAt > Date.now() - 20_000)
+      .slice(-MAX_ROOM_REACTIONS),
     currentCardId,
     drawPile,
     connections: new Set(),
@@ -248,6 +274,13 @@ function serializeRoomForStorage(room) {
       text: message.text,
       createdAt: message.createdAt,
       system: Boolean(message.system)
+    })),
+    reactions: (room.reactions || []).map((reaction) => ({
+      id: reaction.id,
+      playerId: reaction.playerId,
+      playerName: reaction.playerName,
+      kind: validateReactionKind(reaction.kind),
+      createdAt: reaction.createdAt
     })),
     currentCardId: room.currentCardId,
     drawPile: Array.isArray(room.drawPile) ? [...room.drawPile] : [],
@@ -583,6 +616,7 @@ function createRoom(hostName) {
     roundCardTotal: 0,
     turnEndsAt: null,
     chatMessages: [],
+    reactions: [],
     currentCardId: null,
     drawPile: [],
     connections: new Set(),
@@ -761,6 +795,14 @@ function serializeRoom(room, viewerId) {
     })),
     currentCard,
     chatMessages: (room.chatMessages || []).map(serializeChatMessage),
+    reactions: (room.reactions || []).map((reaction) => ({
+      id: reaction.id,
+      playerId: reaction.playerId,
+      playerName: reaction.playerName,
+      kind: validateReactionKind(reaction.kind),
+      label: REACTION_META[validateReactionKind(reaction.kind)].label,
+      createdAt: reaction.createdAt
+    })),
     updatedAt: room.updatedAt
   };
 }
@@ -941,6 +983,11 @@ function validateChatText(value) {
   return cleanMultiLine(value, MAX_CHAT_LENGTH).replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function validateReactionKind(value, fallback = "haha") {
+  const reactionId = cleanSingleLine(value, 24, fallback).toLowerCase();
+  return REACTION_IDS.has(reactionId) ? reactionId : fallback;
+}
+
 function serializeDeck(deck) {
   return {
     id: deck.id,
@@ -992,6 +1039,22 @@ function addChatMessage(room, options) {
 
   room.chatMessages = [...(room.chatMessages || []), message].slice(-MAX_CHAT_MESSAGES);
   return message;
+}
+
+function addRoomReaction(room, options) {
+  const kind = validateReactionKind(options?.kind);
+  const reaction = {
+    id: randomUUID(),
+    playerId: cleanSingleLine(options?.playerId, 64, "system"),
+    playerName: cleanSingleLine(options?.playerName, 24, "Sala"),
+    kind,
+    createdAt: Date.now()
+  };
+
+  room.reactions = [...(room.reactions || []), reaction]
+    .filter((entry) => entry.createdAt > Date.now() - 20_000)
+    .slice(-MAX_ROOM_REACTIONS);
+  return reaction;
 }
 
 function getRoundCardTarget(room) {
@@ -1297,6 +1360,28 @@ async function handleSendChatMessage(request, response, roomCode) {
         statusCode: 422
       });
     }
+
+    touchRoom(room);
+    broadcastRoom(room);
+
+    sendJson(response, 201, {
+      state: serializeRoom(room, player.id)
+    });
+  } catch (error) {
+    sendError(response, error.statusCode || 400, error.message);
+  }
+}
+
+async function handleSendReaction(request, response, roomCode) {
+  const payload = await collectJson(request);
+
+  try {
+    const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
+    addRoomReaction(room, {
+      playerId: player.id,
+      playerName: player.name,
+      kind: payload.kind
+    });
 
     touchRoom(room);
     broadcastRoom(room);
@@ -1914,6 +1999,11 @@ async function handleApi(request, response, pathname, url) {
 
   if (request.method === "POST" && segments[3] === "chat") {
     await handleSendChatMessage(request, response, roomCode);
+    return true;
+  }
+
+  if (request.method === "POST" && segments[3] === "reactions") {
+    await handleSendReaction(request, response, roomCode);
     return true;
   }
 

@@ -1032,6 +1032,106 @@ fieldset {
   margin-top: 1rem;
 }
 
+.table-reaction-burst {
+  position: fixed;
+  right: 24px;
+  bottom: 118px;
+  z-index: 7;
+  display: grid;
+  gap: 0.65rem;
+  pointer-events: none;
+}
+
+.reaction-burst {
+  display: inline-grid;
+  justify-items: start;
+  gap: 0.12rem;
+  padding: 0.72rem 0.92rem;
+  border-radius: 18px;
+  background: rgba(10, 12, 20, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.26);
+  animation: reactionLift 3.6s ease forwards;
+  transform: translateY(calc(var(--reaction-lane, 0) * 2px));
+}
+
+.reaction-burst strong {
+  font-size: 0.88rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.reaction-burst span {
+  font-size: 0.78rem;
+  color: rgba(255, 247, 237, 0.72);
+}
+
+.reaction-burst--gold {
+  border-color: rgba(247, 216, 143, 0.24);
+}
+
+.reaction-burst--cyan {
+  border-color: rgba(125, 211, 252, 0.24);
+}
+
+.reaction-burst--green {
+  border-color: rgba(78, 255, 174, 0.24);
+}
+
+.reaction-burst--rose {
+  border-color: rgba(251, 113, 133, 0.24);
+}
+
+.table-quick-reactions {
+  position: fixed;
+  right: 24px;
+  bottom: 92px;
+  z-index: 7;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  width: min(420px, calc(100vw - 32px));
+}
+
+.quick-reaction-btn {
+  padding: 0.56rem 0.78rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  box-shadow: 0 12px 18px rgba(0, 0, 0, 0.2);
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.quick-reaction-btn:hover {
+  transform: translateY(-2px);
+}
+
+.quick-reaction-btn--gold:hover {
+  background: rgba(247, 216, 143, 0.14);
+  border-color: rgba(247, 216, 143, 0.22);
+}
+
+.quick-reaction-btn--cyan:hover {
+  background: rgba(125, 211, 252, 0.14);
+  border-color: rgba(125, 211, 252, 0.22);
+}
+
+.quick-reaction-btn--green:hover {
+  background: rgba(78, 255, 174, 0.14);
+  border-color: rgba(78, 255, 174, 0.22);
+}
+
+.quick-reaction-btn--rose:hover {
+  background: rgba(251, 113, 133, 0.14);
+  border-color: rgba(251, 113, 133, 0.22);
+}
+
 .table-chat-widget {
   position: fixed;
   right: 24px;
@@ -1043,6 +1143,10 @@ fieldset {
 }
 
 .table-chat-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
   min-width: 114px;
   padding: 0.92rem 1.08rem;
   border-radius: 999px;
@@ -1052,6 +1156,20 @@ fieldset {
   color: var(--text-main);
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+
+.table-chat-badge {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 0.38rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #fb7185, #ff8a3d);
+  color: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  box-shadow: 0 10px 20px rgba(251, 113, 133, 0.32);
 }
 
 .table-chat-widget.is-open .table-chat-toggle {
@@ -1443,6 +1561,14 @@ fieldset {
   gap: 2.5rem;
   width: min(100%, 500px);
   perspective: 1800px;
+}
+
+.table-center-cards.is-drawing .table-card-panel--pile {
+  animation: pilePanelKick 460ms ease both;
+}
+
+.table-center-cards.is-drawing .table-card-panel--open {
+  animation: openPanelCatch 520ms ease both;
 }
 
 .table-action-strip {
@@ -1882,26 +2008,32 @@ fieldset {
 }
 
 .table-open-card.is-fading-out {
-  transform: rotateY(-82deg) translateX(-10px) scale(0.98);
+  transform: translateX(-86px) translateY(12px) rotateY(-86deg) rotateZ(-10deg) scale(0.82);
   transform-origin: left center;
-  opacity: 0.18;
-  filter: blur(1px);
+  opacity: 0;
+  filter: blur(1.6px);
 }
 
 .table-open-card.is-revealing {
-  animation: revealCard 460ms ease both;
+  animation: revealCard 620ms cubic-bezier(0.18, 0.84, 0.28, 1) both;
 }
 
 @keyframes revealCard {
   0% {
     opacity: 0;
-    transform: translateX(128px) translateY(8px) rotateY(88deg) rotateZ(10deg) scale(0.84);
-    filter: blur(1px) brightness(0.98);
+    transform: translateX(178px) translateY(18px) rotateY(88deg) rotateZ(14deg) scale(0.74);
+    filter: blur(1.6px) brightness(0.92);
   }
 
-  55% {
+  42% {
     opacity: 1;
-    transform: translateX(24px) translateY(-8px) rotateY(24deg) rotateZ(-6deg) scale(1.02);
+    transform: translateX(94px) translateY(-14px) rotateY(56deg) rotateZ(-4deg) scale(0.9);
+    filter: blur(0.8px) brightness(1.02);
+  }
+
+  70% {
+    opacity: 1;
+    transform: translateX(16px) translateY(-10px) rotateY(18deg) rotateZ(-6deg) scale(1.03);
     filter: blur(0);
   }
 
@@ -1928,13 +2060,64 @@ fieldset {
 
 @keyframes pileDraw {
   0% {
-    transform: translateY(8px) rotate(-2deg) scale(0.98);
-    opacity: 0.72;
+    transform: translateX(0) translateY(10px) rotate(-4deg) scale(0.96);
+    opacity: 0.82;
+  }
+
+  55% {
+    transform: translateX(-18px) translateY(-10px) rotate(-12deg) scale(1.03);
+    opacity: 0.96;
   }
 
   100% {
     transform: translateY(0) rotate(0deg) scale(1);
     opacity: 1;
+  }
+}
+
+@keyframes pilePanelKick {
+  0% {
+    transform: translateX(0) rotate(0deg);
+  }
+
+  45% {
+    transform: translateX(12px) rotate(2deg);
+  }
+
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+}
+
+@keyframes openPanelCatch {
+  0% {
+    transform: translateX(-12px) scale(0.98);
+  }
+
+  65% {
+    transform: translateX(4px) scale(1.02);
+  }
+
+  100% {
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes reactionLift {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.92);
+  }
+
+  12%,
+  70% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-34px) scale(1.02);
   }
 }
 
@@ -2274,6 +2457,16 @@ fieldset {
     right: 18px;
     bottom: 18px;
   }
+
+  .table-quick-reactions {
+    right: 18px;
+    bottom: 84px;
+  }
+
+  .table-reaction-burst {
+    right: 18px;
+    bottom: 108px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -2428,6 +2621,21 @@ fieldset {
     right: 12px;
     bottom: 12px;
     justify-items: stretch;
+  }
+
+  .table-quick-reactions {
+    left: 12px;
+    right: 12px;
+    bottom: 84px;
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .table-reaction-burst {
+    left: 12px;
+    right: 12px;
+    bottom: 114px;
+    justify-items: end;
   }
 
   .table-chat-toggle {

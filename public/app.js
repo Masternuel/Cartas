@@ -6,6 +6,7 @@ const AUDIO_VOLUME_KEY = "carta-viva-audio-volume";
 const DEFAULT_AUDIO_VOLUME = 0.05;
 const DEFAULT_CARD_KIND = "question";
 const DEFAULT_CARD_RESPONSE_MODE = "individual";
+const REACTION_BURST_MS = 3600;
 const FINAL_SCREEN_IMAGES = [
   {
     src: "/thanks-finish.png",
@@ -253,6 +254,29 @@ const CARD_RESPONSE_MODE_META = {
     description: "Todo mundo responde junto."
   }
 };
+const QUICK_REACTION_META = [
+  {
+    id: "haha",
+    label: "Haha",
+    accent: "gold"
+  },
+  {
+    id: "wow",
+    label: "Uau",
+    accent: "cyan"
+  },
+  {
+    id: "apoio",
+    label: "Apoio",
+    accent: "green"
+  },
+  {
+    id: "caos",
+    label: "Caos",
+    accent: "rose"
+  }
+];
+const QUICK_REACTION_MAP = new Map(QUICK_REACTION_META.map((reaction) => [reaction.id, reaction]));
 
 const state = {
   room: null,
@@ -260,6 +284,8 @@ const state = {
   activeTab: "start",
   menuOpen: false,
   tableChatOpen: false,
+  unreadChatCount: 0,
+  lastSeenChatMessageId: null,
   animatingDraw: false,
   animateCardReveal: false,
   tableAnimation: "idle",
@@ -274,7 +300,9 @@ const state = {
   audioPrimed: false,
   audioVolume: DEFAULT_AUDIO_VOLUME,
   localCardThemeId: DEFAULT_ROOM_APPEARANCE.cardThemeId,
-  favoriteCardKeys: new Set()
+  favoriteCardKeys: new Set(),
+  reactionBursts: [],
+  reactionBurstTimer: null
 };
 
 const elements = {
@@ -314,8 +342,11 @@ const elements = {
   settingsSummary: document.getElementById("settings-summary"),
   roundSettingsSummary: document.getElementById("round-settings-summary"),
   startSummaryButton: document.getElementById("start-summary-btn"),
+  tableReactionBurst: document.getElementById("table-reaction-burst"),
+  tableQuickReactions: document.getElementById("table-quick-reactions"),
   tableChatWidget: document.getElementById("table-chat-widget"),
   tableChatToggle: document.getElementById("table-chat-toggle"),
+  tableChatBadge: document.getElementById("table-chat-badge"),
   tableChatPanel: document.getElementById("table-chat-panel"),
   tableChatClose: document.getElementById("table-chat-close"),
   chatList: document.getElementById("chat-list"),
@@ -411,6 +442,110 @@ function setTableChatOpen(isOpen) {
   elements.tableChatPanel.classList.toggle("hidden", !state.tableChatOpen);
   elements.tableChatWidget?.classList.toggle("is-open", state.tableChatOpen);
   elements.tableChatToggle.setAttribute("aria-expanded", state.tableChatOpen ? "true" : "false");
+
+  if (state.tableChatOpen) {
+    markChatAsRead();
+  }
+}
+
+function getReactionMeta(kind) {
+  return QUICK_REACTION_MAP.get(kind) || QUICK_REACTION_META[0];
+}
+
+function getLastChatMessageId(room) {
+  const messages = Array.isArray(room?.chatMessages) ? room.chatMessages : [];
+  return messages.length ? messages[messages.length - 1].id : null;
+}
+
+function markChatAsRead(room = state.room) {
+  state.unreadChatCount = 0;
+
+  if (!room) {
+    return;
+  }
+
+  state.lastSeenChatMessageId = getLastChatMessageId(room);
+}
+
+function queueReactionBurstCleanup() {
+  window.clearTimeout(state.reactionBurstTimer);
+
+  if (!state.reactionBursts.length) {
+    state.reactionBurstTimer = null;
+    return;
+  }
+
+  const nextExpiry = Math.min(...state.reactionBursts.map((reaction) => reaction.expiresAt));
+  const delay = Math.max(0, nextExpiry - Date.now());
+  state.reactionBurstTimer = window.setTimeout(() => {
+    pruneReactionBursts();
+    renderReactionBursts();
+  }, delay + 40);
+}
+
+function pruneReactionBursts() {
+  const now = Date.now();
+  state.reactionBursts = state.reactionBursts.filter((reaction) => reaction.expiresAt > now);
+  queueReactionBurstCleanup();
+}
+
+function pushReactionBurst(reaction) {
+  const meta = getReactionMeta(reaction.kind);
+  const now = Date.now();
+  state.reactionBursts.push({
+    id: reaction.id,
+    playerName: reaction.playerName || "Sala",
+    label: meta.label,
+    accent: meta.accent,
+    lane: state.reactionBursts.length % 4,
+    expiresAt: now + REACTION_BURST_MS
+  });
+  state.reactionBursts = state.reactionBursts.slice(-8);
+  queueReactionBurstCleanup();
+}
+
+function renderReactionBursts() {
+  if (!elements.tableReactionBurst) {
+    return;
+  }
+
+  pruneReactionBursts();
+  elements.tableReactionBurst.replaceChildren();
+
+  if (!state.room || state.activeTab !== "table" || !state.reactionBursts.length) {
+    return;
+  }
+
+  state.reactionBursts.forEach((reaction, index) => {
+    const bubble = document.createElement("article");
+    bubble.className = `reaction-burst reaction-burst--${reaction.accent}`;
+    bubble.style.setProperty("--reaction-lane", String(reaction.lane));
+    bubble.style.setProperty("--reaction-index", String(index));
+    bubble.append(createTextElement("strong", reaction.label));
+    bubble.append(createTextElement("span", reaction.playerName));
+    elements.tableReactionBurst.append(bubble);
+  });
+}
+
+function renderQuickReactionBar(room) {
+  if (!elements.tableQuickReactions) {
+    return;
+  }
+
+  elements.tableQuickReactions.replaceChildren();
+
+  if (!room || state.activeTab !== "table" || room.phase === "finished") {
+    return;
+  }
+
+  QUICK_REACTION_META.forEach((reaction) => {
+    const button = createTextElement("button", reaction.label, `quick-reaction-btn quick-reaction-btn--${reaction.accent}`);
+    button.type = "button";
+    button.addEventListener("click", () => {
+      handleSendReaction(reaction.id);
+    });
+    elements.tableQuickReactions.append(button);
+  });
 }
 
 function handleTabChange(tabName) {
@@ -1153,6 +1288,8 @@ function applyRoom(snapshot) {
   const previousPhase = state.room?.phase || null;
   const previousCardId = state.room?.currentCard?.id || null;
   const nextCardId = snapshot.currentCard?.id || null;
+  const previousMessages = Array.isArray(state.room?.chatMessages) ? state.room.chatMessages : [];
+  const previousReactions = Array.isArray(state.room?.reactions) ? state.room.reactions : [];
   const shouldPlayFinishTheme =
     snapshot.phase === "finished" && previousPhase !== "finished";
   const shouldRunIntro =
@@ -1164,10 +1301,34 @@ function applyRoom(snapshot) {
     snapshot.phase === "playing" &&
     previousCardId !== nextCardId &&
     Boolean(nextCardId);
+  const previousMessageIds = new Set(previousMessages.map((message) => message.id));
+  const incomingMessages = (Array.isArray(snapshot.chatMessages) ? snapshot.chatMessages : [])
+    .filter((message) => !previousMessageIds.has(message.id));
+  const previousReactionIds = new Set(previousReactions.map((reaction) => reaction.id));
+  const incomingReactions = (Array.isArray(snapshot.reactions) ? snapshot.reactions : [])
+    .filter((reaction) => !previousReactionIds.has(reaction.id));
 
   state.animateCardReveal = shouldAnimateDraw;
 
   state.room = snapshot;
+
+  if (!previousMessages.length) {
+    markChatAsRead(snapshot);
+  } else if (incomingMessages.length) {
+    const unreadIncrement = incomingMessages.filter((message) => message.playerId !== snapshot.viewerId).length;
+
+    if (state.activeTab === "table" && state.tableChatOpen) {
+      markChatAsRead(snapshot);
+    } else if (unreadIncrement > 0) {
+      state.unreadChatCount += unreadIncrement;
+    }
+  }
+
+  if (previousPhase !== null) {
+    incomingReactions.forEach((reaction) => {
+      pushReactionBurst(reaction);
+    });
+  }
 
   if (
     state.editingCardId &&
@@ -1265,7 +1426,12 @@ function disconnectFromRoom(clearRemote = true) {
   state.activeTab = "start";
   state.menuOpen = false;
   state.tableChatOpen = false;
+  state.unreadChatCount = 0;
+  state.lastSeenChatMessageId = null;
   state.tableAnimation = "idle";
+  window.clearTimeout(state.reactionBurstTimer);
+  state.reactionBurstTimer = null;
+  state.reactionBursts = [];
   resetEditor();
   clearSession();
   setRoomMenuOpen(false);
@@ -1631,6 +1797,28 @@ async function handleChatSubmit(event) {
     });
 
     elements.chatInput.value = "";
+
+    if (payload?.state) {
+      applyRoom(payload.state);
+    }
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function handleSendReaction(kind) {
+  if (!state.room) {
+    return;
+  }
+
+  try {
+    const payload = await api(`/api/rooms/${state.room.roomCode}/reactions`, {
+      method: "POST",
+      body: {
+        playerId: state.room.viewerId,
+        kind
+      }
+    });
 
     if (payload?.state) {
       applyRoom(payload.state);
@@ -2092,6 +2280,8 @@ function renderCurrentCard(room) {
 
   const cardsRow = document.createElement("div");
   cardsRow.className = "table-center-cards";
+  cardsRow.classList.toggle("is-drawing", state.animateCardReveal);
+  cardsRow.classList.toggle("is-shuffling", state.tableAnimation === "shuffle");
   cardsRow.append(createTableCardPanel("", faceUpCard, "", "open"));
   cardsRow.append(createTableCardPanel("", pileElement, "", "pile"));
   centerContent.append(cardsRow);
@@ -2599,6 +2789,8 @@ function render() {
     setTableChatOpen(false);
     setConnectionStatus("connecting");
     setActiveTab("start");
+    renderReactionBursts();
+    renderQuickReactionBar(null);
     return;
   }
 
@@ -2609,6 +2801,8 @@ function render() {
   renderPlayers(room);
   renderChat(room);
   renderCurrentCard(room);
+  renderReactionBursts();
+  renderQuickReactionBar(room);
   renderDeck(room);
   renderSavedDecks(room);
   renderThemeStudio(room);
@@ -2647,6 +2841,8 @@ function render() {
   elements.settingsCardsPerRound.disabled = !room.isHost || !deckEditable;
   elements.settingsTimerSeconds.disabled = !room.isHost || !deckEditable;
   elements.chatInput.disabled = false;
+  elements.tableChatBadge.classList.toggle("hidden", state.unreadChatCount <= 0);
+  elements.tableChatBadge.textContent = state.unreadChatCount > 9 ? "9+" : String(state.unreadChatCount);
 
   if (elements.startSummaryButton) {
     if (room.phase === "lobby") {

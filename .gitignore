@@ -4,6 +4,8 @@ node_modules/
 .server.err.log
 saved-decks.json
 *.sqlite
+*.sqlite-shm
+*.sqlite-wal
 *.db
 .DS_Store
 Thumbs.db

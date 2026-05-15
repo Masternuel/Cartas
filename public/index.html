@@ -347,6 +347,8 @@
 
         <section id="table-view" class="room-view room-view--table hidden">
           <div id="current-card-slot" class="current-card-slot current-card-slot--fullscreen"></div>
+          <div id="table-reaction-burst" class="table-reaction-burst" aria-live="polite"></div>
+          <div id="table-quick-reactions" class="table-quick-reactions"></div>
           <div id="table-chat-widget" class="table-chat-widget">
             <button
               id="table-chat-toggle"
@@ -355,7 +357,8 @@
               aria-expanded="false"
               aria-controls="table-chat-panel"
             >
-              Chat
+              <span>Chat</span>
+              <span id="table-chat-badge" class="table-chat-badge hidden">0</span>
             </button>
 
             <section id="table-chat-panel" class="table-chat-panel hidden" aria-label="Chat da sala">
