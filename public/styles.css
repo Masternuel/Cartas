@@ -175,10 +175,11 @@ fieldset {
 
 .welcome-layout {
   min-height: calc(100vh - 64px);
+  position: relative;
   display: grid;
   grid-template-columns: 1.15fr 0.85fr;
-  gap: 20px;
-  align-items: stretch;
+  gap: 22px;
+  align-items: center;
 }
 
 .hero-card,
@@ -192,22 +193,37 @@ fieldset {
 }
 
 .hero-card {
+  isolation: isolate;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   overflow: hidden;
+}
+
+.hero-card::before {
+  content: "";
+  position: absolute;
+  inset: auto -8% -24% auto;
+  z-index: -1;
+  width: min(340px, 52vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(45, 212, 191, 0.18), transparent 66%),
+    radial-gradient(circle at 30% 30%, rgba(255, 138, 61, 0.14), transparent 58%);
+  filter: blur(2px);
 }
 
 .hero-card h1 {
   margin: 0 0 14px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(2.8rem, 6.4vw, 4.8rem);
+  font-size: clamp(3rem, 6vw, 4.65rem);
   line-height: 0.96;
   letter-spacing: -0.05em;
 }
 
 .hero-copy {
-  max-width: 30rem;
+  max-width: 35rem;
   color: var(--text-soft);
   font-size: 1rem;
   line-height: 1.58;
@@ -217,48 +233,47 @@ fieldset {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 1.8rem;
+  margin-top: 1.45rem;
 }
 
 .hero-showcase {
   display: grid;
-  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 0.95fr) minmax(220px, 1.05fr);
   gap: 1rem;
-  margin-top: 1.7rem;
-}
-
-.hero-preview-stack {
-  position: relative;
-  min-height: 226px;
+  align-items: stretch;
+  margin-top: 1.5rem;
 }
 
 .hero-mini-card {
   position: relative;
-  min-height: 226px;
-  padding: 1.15rem 1.2rem;
+  min-height: 214px;
+  padding: 1.2rem;
   border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 24px 46px rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 24px 46px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  transition: transform 180ms ease, border-color 180ms ease;
 }
 
 .hero-mini-card--front {
-  z-index: 2;
   display: grid;
-  align-content: start;
+  align-content: space-between;
   gap: 0.8rem;
   background:
-    linear-gradient(155deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04)),
-    rgba(20, 25, 49, 0.9);
+    radial-gradient(circle at top right, rgba(255, 138, 61, 0.24), transparent 42%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.04)),
+    rgba(20, 25, 49, 0.92);
 }
 
-.hero-mini-card--back {
+.hero-mini-card--front::before {
+  content: "";
   position: absolute;
-  inset: 22px -18px -18px 42px;
-  z-index: 1;
-  background:
-    linear-gradient(145deg, rgba(59, 130, 246, 0.18), rgba(16, 185, 129, 0.12)),
-    rgba(11, 15, 28, 0.92);
-  transform: rotate(8deg);
+  inset: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
 }
 
 .hero-mini-card__kicker {
@@ -272,6 +287,24 @@ fieldset {
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-size: 0.74rem;
+}
+
+.hero-mini-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+}
+
+.hero-mini-card__meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0.35rem 0.62rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 247, 237, 0.84);
+  font-size: 0.78rem;
 }
 
 .hero-mini-card strong,
@@ -296,18 +329,48 @@ fieldset {
 
 .hero-insight,
 .hero-step {
+  position: relative;
   padding: 1rem 1.05rem;
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.hero-insight {
+  display: grid;
+  align-content: center;
+  gap: 0.3rem;
+  padding-left: 1.2rem;
+}
+
+.hero-insight::before {
+  content: "";
+  position: absolute;
+  top: 1rem;
+  bottom: 1rem;
+  left: 0.72rem;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 138, 61, 0.95), rgba(45, 212, 191, 0.8));
+}
+
+.hero-insight strong,
+.hero-insight span {
+  margin-left: 0.55rem;
+}
+
+.hero-steps {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 1rem;
 }
 
 .hero-step {
   display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: start;
-  gap: 0.9rem;
-  margin-top: 1rem;
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 0.72rem;
+  min-height: 136px;
 }
 
 .hero-step span {
@@ -337,12 +400,44 @@ fieldset {
 
 .entry-stack {
   display: grid;
-  gap: 24px;
+  align-content: center;
+  gap: 18px;
 }
 
 .auth-card {
+  isolation: isolate;
   display: grid;
-  gap: 1rem;
+  gap: 1.05rem;
+  overflow: hidden;
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.auth-card::before {
+  content: "";
+  position: absolute;
+  inset: auto -24% -36% auto;
+  z-index: -1;
+  width: 240px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 138, 61, 0.15), transparent 70%);
+}
+
+.auth-card:last-child::before {
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.16), transparent 70%);
+}
+
+.hero-mini-card:hover,
+.hero-insight:hover,
+.hero-step:hover,
+.auth-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.hero-insight:hover,
+.hero-step:hover {
+  background: rgba(255, 255, 255, 0.065);
 }
 
 .auth-card h2,
@@ -2418,6 +2513,10 @@ fieldset {
     grid-template-columns: 1fr;
   }
 
+  .hero-steps {
+    grid-template-columns: 1fr;
+  }
+
   .start-hero {
     grid-template-columns: 1fr;
   }
@@ -2528,12 +2627,8 @@ fieldset {
     font-size: 3rem;
   }
 
-  .hero-preview-stack {
-    min-height: 220px;
-  }
-
   .hero-mini-card {
-    min-height: 220px;
+    min-height: 210px;
   }
 
   .current-card-slot--fullscreen {
