@@ -5,6 +5,7 @@ const LOCAL_FAVORITES_KEY = "carta-viva-favorite-cards";
 const AUDIO_VOLUME_KEY = "carta-viva-audio-volume";
 const DEFAULT_AUDIO_VOLUME = 0.05;
 const DEFAULT_CARD_KIND = "question";
+const DEFAULT_CARD_RESPONSE_MODE = "individual";
 const FINAL_SCREEN_IMAGES = [
   {
     src: "/thanks-finish.png",
@@ -225,14 +226,31 @@ const CARD_KIND_META = {
     description: "Segue a rodada normalmente."
   },
   "skip-turn": {
-    label: "Pular sua vez",
-    shortLabel: "Pule a vez",
+    label: "Passar para a proxima pessoa",
+    shortLabel: "Passe adiante",
     description: "Quem esta na vez pode passar a resposta para a proxima pessoa."
   },
   "choose-player": {
     label: "Escolher quem responde",
     shortLabel: "Escolha quem responde",
     description: "Quem esta na vez escolhe outra pessoa para responder essa carta."
+  },
+  "skip-question": {
+    label: "Pular pergunta",
+    shortLabel: "Pule a pergunta",
+    description: "Quem esta na vez pode descartar esta carta e seguir para a proxima."
+  }
+};
+const CARD_RESPONSE_MODE_META = {
+  individual: {
+    label: "Resposta individual",
+    shortLabel: "Individual",
+    description: "Uma pessoa responde essa carta."
+  },
+  collective: {
+    label: "Resposta coletiva",
+    shortLabel: "Coletiva",
+    description: "Todo mundo responde junto."
   }
 };
 
@@ -241,6 +259,7 @@ const state = {
   savedDecks: [],
   activeTab: "start",
   menuOpen: false,
+  tableChatOpen: false,
   animatingDraw: false,
   animateCardReveal: false,
   tableAnimation: "idle",
@@ -295,6 +314,10 @@ const elements = {
   settingsSummary: document.getElementById("settings-summary"),
   roundSettingsSummary: document.getElementById("round-settings-summary"),
   startSummaryButton: document.getElementById("start-summary-btn"),
+  tableChatWidget: document.getElementById("table-chat-widget"),
+  tableChatToggle: document.getElementById("table-chat-toggle"),
+  tableChatPanel: document.getElementById("table-chat-panel"),
+  tableChatClose: document.getElementById("table-chat-close"),
   chatList: document.getElementById("chat-list"),
   chatForm: document.getElementById("chat-form"),
   chatInput: document.getElementById("chat-input"),
@@ -305,6 +328,7 @@ const elements = {
   cardTitle: document.getElementById("card-title"),
   cardCategory: document.getElementById("card-category"),
   cardKind: document.getElementById("card-kind"),
+  cardResponseMode: document.getElementById("card-response-mode"),
   cardQuestion: document.getElementById("card-question"),
   cardColor: document.getElementById("card-color"),
   deckNameInput: document.getElementById("deck-name"),
@@ -360,6 +384,10 @@ function setActiveTab(tabName) {
 
   elements.pageShell.classList.toggle("is-room", Boolean(state.room));
   elements.pageShell.classList.toggle("is-table-tab", Boolean(state.room) && state.activeTab === "table");
+
+  if (state.activeTab !== "table") {
+    setTableChatOpen(false);
+  }
 }
 
 function setRoomMenuOpen(isOpen) {
@@ -371,6 +399,18 @@ function setRoomMenuOpen(isOpen) {
   elements.roomDrawer.inert = !state.menuOpen;
   elements.roomDrawer.setAttribute("aria-hidden", state.menuOpen ? "false" : "true");
   elements.openRoomMenuButton.setAttribute("aria-expanded", state.menuOpen ? "true" : "false");
+}
+
+function setTableChatOpen(isOpen) {
+  state.tableChatOpen = Boolean(isOpen) && Boolean(state.room);
+
+  if (!elements.tableChatPanel || !elements.tableChatToggle) {
+    return;
+  }
+
+  elements.tableChatPanel.classList.toggle("hidden", !state.tableChatOpen);
+  elements.tableChatWidget?.classList.toggle("is-open", state.tableChatOpen);
+  elements.tableChatToggle.setAttribute("aria-expanded", state.tableChatOpen ? "true" : "false");
 }
 
 function handleTabChange(tabName) {
@@ -755,11 +795,16 @@ function normalizeCardKind(value) {
   return CARD_KIND_META[value] ? value : DEFAULT_CARD_KIND;
 }
 
+function normalizeCardResponseMode(value) {
+  return CARD_RESPONSE_MODE_META[value] ? value : DEFAULT_CARD_RESPONSE_MODE;
+}
+
 function createCardFavoriteKey(card) {
   return [
     normalizeSingleLine(card?.title, 36, "carta"),
     normalizeSingleLine(card?.category, 24, "pergunta"),
     normalizeCardKind(card?.kind),
+    normalizeCardResponseMode(card?.responseMode),
     normalizeMultiLine(card?.question, 280)
   ].join("::").toLowerCase();
 }
@@ -792,6 +837,31 @@ function getCardKindMeta(kind) {
   return CARD_KIND_META[normalizeCardKind(kind)] || CARD_KIND_META[DEFAULT_CARD_KIND];
 }
 
+function getCardResponseModeMeta(responseMode) {
+  return CARD_RESPONSE_MODE_META[normalizeCardResponseMode(responseMode)] || CARD_RESPONSE_MODE_META[DEFAULT_CARD_RESPONSE_MODE];
+}
+
+function isCollectiveCard(card) {
+  return normalizeCardResponseMode(card?.responseMode) === "collective";
+}
+
+function buildCardModeDescription(card) {
+  const responseModeMeta = getCardResponseModeMeta(card?.responseMode);
+  const kindMeta = getCardKindMeta(card?.kind);
+  const kind = normalizeCardKind(card?.kind);
+  const isCollective = normalizeCardResponseMode(card?.responseMode) === "collective";
+
+  if (kind === DEFAULT_CARD_KIND) {
+    return responseModeMeta.description;
+  }
+
+  if (isCollective && (kind === "skip-turn" || kind === "choose-player")) {
+    return `${responseModeMeta.description} O efeito especial dessa carta funciona melhor no modo individual.`;
+  }
+
+  return `${kindMeta.description} ${responseModeMeta.description}`;
+}
+
 function createLocalDeckId() {
   if (window.crypto?.randomUUID) {
     return window.crypto.randomUUID();
@@ -807,7 +877,8 @@ function mapCardsForLocalDeck(cards) {
       category: normalizeSingleLine(card.category, 24, "Pergunta"),
       question: normalizeMultiLine(card.question, 280),
       color: normalizeCardColor(card.color),
-      kind: normalizeCardKind(card.kind)
+      kind: normalizeCardKind(card.kind),
+      responseMode: normalizeCardResponseMode(card.responseMode)
     }))
     .filter((card) => card.question);
 }
@@ -1051,6 +1122,7 @@ function resetEditor() {
   elements.cardForm.reset();
   elements.cardColor.value = "#c79d51";
   elements.cardKind.value = DEFAULT_CARD_KIND;
+  elements.cardResponseMode.value = DEFAULT_CARD_RESPONSE_MODE;
 }
 
 function beginEdit(cardId) {
@@ -1071,6 +1143,7 @@ function beginEdit(cardId) {
   elements.cardTitle.value = card.title;
   elements.cardCategory.value = card.category;
   elements.cardKind.value = normalizeCardKind(card.kind);
+  elements.cardResponseMode.value = normalizeCardResponseMode(card.responseMode);
   elements.cardQuestion.value = card.question;
   elements.cardColor.value = card.color;
   elements.cardQuestion.focus();
@@ -1191,10 +1264,12 @@ function disconnectFromRoom(clearRemote = true) {
   state.savedDecks = [];
   state.activeTab = "start";
   state.menuOpen = false;
+  state.tableChatOpen = false;
   state.tableAnimation = "idle";
   resetEditor();
   clearSession();
   setRoomMenuOpen(false);
+  setTableChatOpen(false);
   render();
 
   if (clearRemote && activeSession) {
@@ -1608,6 +1683,27 @@ async function handleSkipTurnCard() {
   }
 }
 
+async function handleSkipQuestionCard() {
+  if (!state.room) {
+    return;
+  }
+
+  try {
+    const payload = await api(`/api/rooms/${state.room.roomCode}/game/skip-card`, {
+      method: "POST",
+      body: {
+        playerId: state.room.viewerId
+      }
+    });
+
+    if (payload?.state) {
+      applyRoom(payload.state);
+    }
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 function createTableCardPanel(label, cardElement, hint, variant = "") {
   const panel = document.createElement("div");
   panel.className = "table-card-panel";
@@ -1765,6 +1861,7 @@ function renderPlayers(room) {
   elements.drawerPlayersCount.textContent = String(room.players.length);
   const activePlayer = getActivePlayer(room);
   const responder = getCurrentResponder(room);
+  const collectiveCardActive = isCollectiveCard(room.currentCard);
 
   room.players.forEach((player) => {
     const row = document.createElement("article");
@@ -1797,7 +1894,7 @@ function renderPlayers(room) {
       labels.append(createTextElement("span", "Na vez", "host-badge host-badge--active"));
     }
 
-    if (responder?.id === player.id && room.phase === "playing") {
+    if (!collectiveCardActive && responder?.id === player.id && room.phase === "playing") {
       labels.append(createTextElement("span", "Responde", "host-badge"));
     }
 
@@ -1861,7 +1958,7 @@ function renderPlayers(room) {
       drawerLabels.append(createTextElement("span", "Na vez", "host-badge host-badge--active"));
     }
 
-    if (responder?.id === player.id && room.phase === "playing") {
+    if (!collectiveCardActive && responder?.id === player.id && room.phase === "playing") {
       drawerLabels.append(createTextElement("span", "Responde", "host-badge"));
     }
 
@@ -1907,6 +2004,8 @@ function renderCurrentCard(room) {
   const activePlayer = getActivePlayer(room);
   const responder = getCurrentResponder(room);
   const currentCardKindMeta = getCardKindMeta(room.currentCard?.kind);
+  const currentCardResponseModeMeta = getCardResponseModeMeta(room.currentCard?.responseMode);
+  const currentCardIsCollective = isCollectiveCard(room.currentCard);
 
   const playersLayer = document.createElement("div");
   playersLayer.className = "table-players-layer";
@@ -1946,12 +2045,13 @@ function renderCurrentCard(room) {
       categoryText: room.currentCard.category || currentCardKindMeta.shortLabel,
       titleText: room.currentCard.title,
       questionText: room.currentCard.question,
-      noteText:
-        room.currentCard.kind !== DEFAULT_CARD_KIND
-          ? currentCardKindMeta.description
+      noteText: currentCardIsCollective
+        ? buildCardModeDescription(room.currentCard)
+        : room.currentCard.kind !== DEFAULT_CARD_KIND
+          ? buildCardModeDescription(room.currentCard)
           : responder
             ? `Responde agora: ${responder.name}`
-            : ""
+            : currentCardResponseModeMeta.description
     });
   } else {
     faceUpCard = createFrontCard({
@@ -2009,6 +2109,17 @@ function renderCurrentCard(room) {
     kindPill.append(createTextElement("span", currentCardKindMeta.description));
     infoPills.append(kindPill);
 
+    const responseModePill = document.createElement("span");
+    responseModePill.className = "table-info-pill";
+    responseModePill.append(createTextElement("strong", "Resposta"));
+    responseModePill.append(
+      createTextElement(
+        "span",
+        currentCardIsCollective ? "Todos respondem juntos" : "Uma pessoa responde"
+      )
+    );
+    infoPills.append(responseModePill);
+
     if (activePlayer) {
       const turnPill = document.createElement("span");
       turnPill.className = "table-info-pill";
@@ -2017,7 +2128,7 @@ function renderCurrentCard(room) {
       infoPills.append(turnPill);
     }
 
-    if (responder) {
+    if (!currentCardIsCollective && responder) {
       const responderPill = document.createElement("span");
       responderPill.className = "table-info-pill";
       responderPill.append(createTextElement("strong", "Responde"));
@@ -2038,7 +2149,7 @@ function renderCurrentCard(room) {
 
     actionStrip.append(infoPills);
 
-    if (room.currentCard.kind === "skip-turn") {
+    if (room.currentCard.kind === "skip-turn" && !currentCardIsCollective) {
       const specialActions = document.createElement("div");
       specialActions.className = "table-special-actions";
 
@@ -2046,7 +2157,7 @@ function renderCurrentCard(room) {
         specialActions.append(
           createTextElement(
             "p",
-            "Essa carta permite pular a resposta para a proxima pessoa da mesa.",
+            "Essa carta permite passar a resposta para a proxima pessoa da mesa.",
             "table-special-copy"
           )
         );
@@ -2072,7 +2183,7 @@ function renderCurrentCard(room) {
       actionStrip.append(specialActions);
     }
 
-    if (room.currentCard.kind === "choose-player") {
+    if (room.currentCard.kind === "choose-player" && !currentCardIsCollective) {
       const specialActions = document.createElement("div");
       specialActions.className = "table-special-actions";
 
@@ -2108,6 +2219,40 @@ function renderCurrentCard(room) {
           createTextElement(
             "p",
             `${activePlayer.name} esta escolhendo quem vai responder essa carta.`,
+            "table-special-copy"
+          )
+        );
+      }
+
+      actionStrip.append(specialActions);
+    }
+
+    if (room.currentCard.kind === "skip-question") {
+      const specialActions = document.createElement("div");
+      specialActions.className = "table-special-actions";
+
+      if (room.viewerId === room.activePlayerId) {
+        specialActions.append(
+          createTextElement(
+            "p",
+            "Essa carta permite descartar a pergunta atual e seguir para a proxima.",
+            "table-special-copy"
+          )
+        );
+
+        const skipQuestionButton = createTextElement(
+          "button",
+          "Pular esta pergunta",
+          "secondary-btn"
+        );
+        skipQuestionButton.type = "button";
+        skipQuestionButton.addEventListener("click", handleSkipQuestionCard);
+        specialActions.append(skipQuestionButton);
+      } else if (activePlayer) {
+        specialActions.append(
+          createTextElement(
+            "p",
+            `${activePlayer.name} pode usar essa carta para pular a pergunta atual.`,
             "table-special-copy"
           )
         );
@@ -2192,6 +2337,7 @@ function renderDeck(room) {
     item.className = "deck-entry";
     const isFavorite = isFavoriteCard(card);
     const kindMeta = getCardKindMeta(card.kind);
+    const responseModeMeta = getCardResponseModeMeta(card.responseMode);
 
     if (isFavorite) {
       item.classList.add("is-favorite");
@@ -2202,7 +2348,7 @@ function renderDeck(room) {
       categoryText: card.category || kindMeta.shortLabel,
       titleText: card.title,
       questionText: card.question,
-      noteText: kindMeta.shortLabel
+      noteText: responseModeMeta.shortLabel
     });
 
     item.append(createCardStack(front, true));
@@ -2213,11 +2359,12 @@ function renderDeck(room) {
     const meta = document.createElement("div");
     meta.className = "deck-entry__meta";
     meta.append(createTextElement("span", kindMeta.label, "card-label card-label--soft"));
+    meta.append(createTextElement("span", responseModeMeta.label, "card-label card-label--soft"));
     meta.append(
       createTextElement(
         "span",
         room.phase === "lobby"
-          ? kindMeta.description
+          ? buildCardModeDescription(card)
           : "Carta bloqueada durante a rodada.",
         "deck-entry__hint"
       )
@@ -2417,14 +2564,16 @@ function renderBoardCopy(room) {
   }
 
   if (room.phase === "playing") {
-    elements.boardTitle.textContent = responder
+    elements.boardTitle.textContent = isCollectiveCard(room.currentCard)
+      ? "Todo mundo responde esta carta"
+      : responder
       ? `${responder.name} responde agora`
       : activePlayer
         ? `${activePlayer.name} esta na vez`
         : "Rodada em andamento";
     elements.boardSubtitle.textContent =
       room.currentCard
-        ? `${getCardKindMeta(room.currentCard.kind).description} ${settingsSummary} Clique no monte preto para virar a proxima carta.`
+        ? `${buildCardModeDescription(room.currentCard)} ${settingsSummary} Clique no monte preto para virar a proxima carta.`
         : "A rodada esta fechando. Avance para encerrar.";
     return;
   }
@@ -2447,6 +2596,7 @@ function render() {
 
   if (!room) {
     setRoomMenuOpen(false);
+    setTableChatOpen(false);
     setConnectionStatus("connecting");
     setActiveTab("start");
     return;
@@ -2596,6 +2746,7 @@ async function handleCardSubmit(event) {
     title: elements.cardTitle.value,
     category: elements.cardCategory.value,
     kind: elements.cardKind.value,
+    responseMode: elements.cardResponseMode.value,
     question: elements.cardQuestion.value,
     color: elements.cardColor.value
   };
@@ -3022,6 +3173,12 @@ function bindEvents() {
   elements.joinRoomForm.addEventListener("submit", handleJoinRoom);
   elements.cardForm.addEventListener("submit", handleCardSubmit);
   elements.chatForm.addEventListener("submit", handleChatSubmit);
+  elements.tableChatToggle?.addEventListener("click", () => {
+    setTableChatOpen(!state.tableChatOpen);
+  });
+  elements.tableChatClose?.addEventListener("click", () => {
+    setTableChatOpen(false);
+  });
   elements.saveDeckButton.addEventListener("click", handleSaveDeck);
   elements.exportDeckButton.addEventListener("click", handleExportCurrentDeck);
   elements.importDeckButton.addEventListener("click", () => {

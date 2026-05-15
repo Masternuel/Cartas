@@ -1032,6 +1032,87 @@ fieldset {
   margin-top: 1rem;
 }
 
+.table-chat-widget {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 7;
+  display: grid;
+  justify-items: end;
+  gap: 0.85rem;
+}
+
+.table-chat-toggle {
+  min-width: 114px;
+  padding: 0.92rem 1.08rem;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(26, 28, 43, 0.96), rgba(8, 10, 18, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.34);
+  color: var(--text-main);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.table-chat-widget.is-open .table-chat-toggle {
+  background: linear-gradient(180deg, rgba(45, 212, 191, 0.18), rgba(14, 18, 34, 0.94));
+  border-color: rgba(45, 212, 191, 0.28);
+}
+
+.table-chat-panel {
+  width: min(360px, calc(100vw - 28px));
+  max-height: min(72vh, 620px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(19, 22, 37, 0.98), rgba(8, 10, 18, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(16px);
+}
+
+.table-chat-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.table-chat-panel__head h3 {
+  margin: 0.25rem 0 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+}
+
+.table-chat-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.table-chat-panel .chat-list {
+  max-height: none;
+  min-height: 0;
+  padding-right: 0.15rem;
+}
+
+.table-chat-panel .chat-form {
+  margin-top: 0;
+}
+
+.table-chat-panel .chat-form textarea {
+  min-height: 92px;
+}
+
 .chat-message {
   display: grid;
   gap: 0.45rem;
@@ -2186,6 +2267,11 @@ fieldset {
     top: 24px;
     right: 24px;
   }
+
+  .table-chat-widget {
+    right: 18px;
+    bottom: 18px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -2333,6 +2419,25 @@ fieldset {
     right: 16px;
     padding: 0.58rem 0.82rem;
     font-size: 0.86rem;
+  }
+
+  .table-chat-widget {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    justify-items: stretch;
+  }
+
+  .table-chat-toggle {
+    justify-self: end;
+    min-width: 108px;
+  }
+
+  .table-chat-panel {
+    width: 100%;
+    max-height: min(58vh, 500px);
+    padding: 0.9rem;
+    border-radius: 22px;
   }
 
   .table-open-card .ornate-card__title {

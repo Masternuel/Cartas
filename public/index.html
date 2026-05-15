@@ -341,36 +341,49 @@
                 </div>
               </section>
 
-              <section class="panel start-panel start-panel--chat">
-                <div class="section-heading">
-                  <div>
-                    <p class="card-kicker">Chat</p>
-                    <h3>Conversa da sala</h3>
-                  </div>
-                </div>
-
-                <div id="chat-list" class="chat-list"></div>
-
-                <form id="chat-form" class="chat-form">
-                  <label class="field">
-                    <span>Mensagem</span>
-                    <textarea
-                      id="chat-input"
-                      rows="3"
-                      maxlength="220"
-                      placeholder="Escreva algo para todo mundo..."
-                      required
-                    ></textarea>
-                  </label>
-                  <button type="submit" class="secondary-btn">Enviar mensagem</button>
-                </form>
-              </section>
             </div>
           </div>
         </section>
 
         <section id="table-view" class="room-view room-view--table hidden">
           <div id="current-card-slot" class="current-card-slot current-card-slot--fullscreen"></div>
+          <div id="table-chat-widget" class="table-chat-widget">
+            <button
+              id="table-chat-toggle"
+              class="table-chat-toggle"
+              type="button"
+              aria-expanded="false"
+              aria-controls="table-chat-panel"
+            >
+              Chat
+            </button>
+
+            <section id="table-chat-panel" class="table-chat-panel hidden" aria-label="Chat da sala">
+              <div class="table-chat-panel__head">
+                <div>
+                  <p class="card-kicker">Chat</p>
+                  <h3>Conversa da sala</h3>
+                </div>
+                <button id="table-chat-close" class="table-chat-close" type="button">×</button>
+              </div>
+
+              <div id="chat-list" class="chat-list"></div>
+
+              <form id="chat-form" class="chat-form">
+                <label class="field">
+                  <span>Mensagem</span>
+                  <textarea
+                    id="chat-input"
+                    rows="3"
+                    maxlength="220"
+                    placeholder="Escreva algo para todo mundo..."
+                    required
+                  ></textarea>
+                </label>
+                <button type="submit" class="secondary-btn">Enviar mensagem</button>
+              </form>
+            </section>
+          </div>
         </section>
 
         <section id="cards-view" class="room-view room-view--cards hidden">
@@ -406,8 +419,17 @@
                     <span>Tipo da carta</span>
                     <select id="card-kind" name="kind">
                       <option value="question">Pergunta normal</option>
-                      <option value="skip-turn">Pular sua vez</option>
+                      <option value="skip-turn">Passar para a proxima pessoa</option>
                       <option value="choose-player">Escolher quem responde</option>
+                      <option value="skip-question">Pular pergunta</option>
+                    </select>
+                  </label>
+
+                  <label class="field">
+                    <span>Tipo de resposta</span>
+                    <select id="card-response-mode" name="responseMode">
+                      <option value="individual">Resposta individual</option>
+                      <option value="collective">Resposta coletiva</option>
                     </select>
                   </label>
 

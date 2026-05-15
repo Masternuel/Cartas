@@ -17,6 +17,7 @@ const DEFAULT_BACKGROUND_ID = "midnight-veil";
 const DEFAULT_CARDS_PER_ROUND = 0;
 const DEFAULT_TURN_TIMER_SECONDS = 0;
 const DEFAULT_CARD_KIND = "question";
+const DEFAULT_CARD_RESPONSE_MODE = "individual";
 const CARD_THEME_IDS = new Set([
   "azure-whisper",
   "crimson-velvet",
@@ -27,7 +28,12 @@ const CARD_THEME_IDS = new Set([
 const CARD_KIND_IDS = new Set([
   "question",
   "skip-turn",
-  "choose-player"
+  "choose-player",
+  "skip-question"
+]);
+const CARD_RESPONSE_MODE_IDS = new Set([
+  "individual",
+  "collective"
 ]);
 const BACKGROUND_IDS = new Set([
   "midnight-veil",
@@ -149,6 +155,7 @@ function makeDefaultCards() {
       question: "Qual memoria recente te fez sorrir sem perceber?",
       color: "#f97316",
       kind: "question",
+      responseMode: "individual",
       authorId: "system",
       authorName: "Sistema"
     },
@@ -159,6 +166,7 @@ function makeDefaultCards() {
       question: "O que voce escolheria perder por uma semana: internet ou cafe?",
       color: "#14b8a6",
       kind: "question",
+      responseMode: "individual",
       authorId: "system",
       authorName: "Sistema"
     },
@@ -169,6 +177,7 @@ function makeDefaultCards() {
       question: "Conte uma situacao em que voce precisou improvisar e deu certo.",
       color: "#ec4899",
       kind: "question",
+      responseMode: "individual",
       authorId: "system",
       authorName: "Sistema"
     },
@@ -179,6 +188,7 @@ function makeDefaultCards() {
       question: "Quais tres qualidades nao podem faltar em um parceiro de projeto?",
       color: "#8b5cf6",
       kind: "question",
+      responseMode: "individual",
       authorId: "system",
       authorName: "Sistema"
     }
@@ -408,6 +418,7 @@ function serializeRoom(room, viewerId) {
       question: card.question,
       color: card.color,
       kind: validateCardKind(card.kind),
+      responseMode: validateCardResponseMode(card.responseMode),
       authorName: card.authorName,
       canEdit: playerCanEditCard(room, viewerId, card),
       canDelete: playerCanEditCard(room, viewerId, card)
@@ -536,12 +547,13 @@ function validateCardInput(payload) {
   const question = cleanMultiLine(payload.question, 280);
   const color = cleanColor(payload.color);
   const kind = validateCardKind(payload.kind);
+  const responseMode = validateCardResponseMode(payload.responseMode);
 
   if (!question) {
     throw Object.assign(new Error("Escreva uma pergunta para a carta."), { statusCode: 422 });
   }
 
-  return { title, category, question, color, kind };
+  return { title, category, question, color, kind, responseMode };
 }
 
 function validateDeckName(value, fallback = "Deck sem nome") {
@@ -551,6 +563,11 @@ function validateDeckName(value, fallback = "Deck sem nome") {
 function validateCardKind(value, fallback = DEFAULT_CARD_KIND) {
   const kind = cleanSingleLine(value, 24, fallback);
   return CARD_KIND_IDS.has(kind) ? kind : fallback;
+}
+
+function validateCardResponseMode(value, fallback = DEFAULT_CARD_RESPONSE_MODE) {
+  const responseMode = cleanSingleLine(value, 24, fallback);
+  return CARD_RESPONSE_MODE_IDS.has(responseMode) ? responseMode : fallback;
 }
 
 function validateCardThemeId(value, fallback = DEFAULT_CARD_THEME_ID) {
@@ -604,7 +621,8 @@ function mapCardsForDeck(cards) {
     category: cleanSingleLine(card.category, 24, "Pergunta"),
     question: cleanMultiLine(card.question, 280),
     color: cleanColor(card.color),
-    kind: validateCardKind(card.kind)
+    kind: validateCardKind(card.kind),
+    responseMode: validateCardResponseMode(card.responseMode)
   }));
 }
 
@@ -974,6 +992,12 @@ async function handleChooseResponder(request, response, roomCode) {
       });
     }
 
+    if (validateCardResponseMode(currentCard.responseMode) === "collective") {
+      throw Object.assign(new Error("Cartas coletivas nao escolhem uma pessoa so para responder."), {
+        statusCode: 409
+      });
+    }
+
     if (room.activePlayerId && player.id !== room.activePlayerId) {
       throw Object.assign(new Error("Somente quem esta na vez pode escolher quem responde."), {
         statusCode: 403
@@ -1020,6 +1044,12 @@ async function handleSkipResponder(request, response, roomCode) {
       });
     }
 
+    if (validateCardResponseMode(currentCard.responseMode) === "collective") {
+      throw Object.assign(new Error("Cartas coletivas nao passam a resposta para uma pessoa so."), {
+        statusCode: 409
+      });
+    }
+
     if (room.activePlayerId && player.id !== room.activePlayerId) {
       throw Object.assign(new Error("Somente quem esta na vez pode pular a resposta."), {
         statusCode: 403
@@ -1028,6 +1058,44 @@ async function handleSkipResponder(request, response, roomCode) {
 
     const currentResponderId = room.responderPlayerId || room.activePlayerId || player.id;
     room.responderPlayerId = getNextPlayerId(room, currentResponderId);
+    touchRoom(room);
+    broadcastRoom(room);
+
+    sendJson(response, 200, {
+      state: serializeRoom(room, player.id)
+    });
+  } catch (error) {
+    sendError(response, error.statusCode || 400, error.message);
+  }
+}
+
+async function handleSkipQuestion(request, response, roomCode) {
+  const payload = await collectJson(request);
+
+  try {
+    const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
+
+    if (room.phase !== "playing" || !room.currentCardId) {
+      throw Object.assign(new Error("Nao existe carta ativa para pular a pergunta."), {
+        statusCode: 409
+      });
+    }
+
+    const currentCard = getCard(room, room.currentCardId);
+
+    if (!currentCard || currentCard.kind !== "skip-question") {
+      throw Object.assign(new Error("A carta atual nao permite pular a pergunta."), {
+        statusCode: 409
+      });
+    }
+
+    if (room.activePlayerId && player.id !== room.activePlayerId) {
+      throw Object.assign(new Error("Somente quem esta na vez pode pular a pergunta."), {
+        statusCode: 403
+      });
+    }
+
+    advanceRoom(room);
     touchRoom(room);
     broadcastRoom(room);
 
@@ -1206,6 +1274,7 @@ async function handleLoadDeck(request, response, roomCode, deckId) {
       question: card.question,
       color: card.color,
       kind: validateCardKind(card.kind),
+      responseMode: validateCardResponseMode(card.responseMode),
       authorId: player.id,
       authorName: player.name
     }));
@@ -1250,6 +1319,7 @@ async function handleImportDeck(request, response, roomCode) {
       question: card.question,
       color: card.color,
       kind: validateCardKind(card.kind),
+      responseMode: validateCardResponseMode(card.responseMode),
       authorId: player.id,
       authorName: player.name
     }));
@@ -1577,6 +1647,11 @@ async function handleApi(request, response, pathname, url) {
 
   if (segments[3] === "game" && segments[4] === "skip" && request.method === "POST") {
     await handleSkipResponder(request, response, roomCode);
+    return true;
+  }
+
+  if (segments[3] === "game" && segments[4] === "skip-card" && request.method === "POST") {
+    await handleSkipQuestion(request, response, roomCode);
     return true;
   }
 
