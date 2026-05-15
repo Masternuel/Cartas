@@ -2,12 +2,14 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { randomUUID } = require("crypto");
+const { DatabaseSync } = require("node:sqlite");
 const { URL } = require("url");
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : __dirname;
 const SAVED_DECKS_FILE = path.join(DATA_DIR, "saved-decks.json");
+const DATABASE_FILE = path.join(DATA_DIR, "carta-viva.sqlite");
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_PLAYERS_PER_ROOM = 12;
 const MAX_CHAT_MESSAGES = 80;
@@ -44,6 +46,7 @@ const BACKGROUND_IDS = new Set([
 ]);
 const rooms = new Map();
 let savedDecks = [];
+let database = null;
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -62,26 +65,357 @@ function ensureDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-function loadSavedDecks() {
-  try {
-    ensureDataDir();
+function getDatabase() {
+  if (database) {
+    return database;
+  }
 
-    if (!fs.existsSync(SAVED_DECKS_FILE)) {
-      savedDecks = [];
+  ensureDataDir();
+  database = new DatabaseSync(DATABASE_FILE);
+  database.exec(`
+    PRAGMA journal_mode = WAL;
+    CREATE TABLE IF NOT EXISTS saved_decks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      cards_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS rooms (
+      code TEXT PRIMARY KEY,
+      payload_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  return database;
+}
+
+function safeParseJson(rawValue, fallback) {
+  try {
+    return JSON.parse(rawValue);
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function normalizeStoredDeckRecord(record) {
+  const cards = mapCardsForDeck(Array.isArray(record?.cards) ? record.cards : []);
+
+  if (!cards.length) {
+    return null;
+  }
+
+  const createdAt = Number(record?.createdAt) || Date.now();
+  const updatedAt = Number(record?.updatedAt) || createdAt;
+
+  return {
+    id: cleanSingleLine(record?.id, 64, randomUUID()),
+    name: validateDeckName(record?.name, "Deck sem nome"),
+    cards,
+    createdAt,
+    updatedAt
+  };
+}
+
+function normalizeStoredRoomRecord(record) {
+  const rawPlayers = Array.isArray(record?.players) ? record.players : [];
+  const players = rawPlayers
+    .map((player) => ({
+      id: cleanSingleLine(player?.id, 64, ""),
+      name: cleanSingleLine(player?.name, 24, "Jogador"),
+      isReady: Boolean(player?.isReady)
+    }))
+    .filter((player) => player.id);
+
+  if (!players.length) {
+    return null;
+  }
+
+  const cards = (Array.isArray(record?.cards) ? record.cards : [])
+    .map((card) => ({
+      id: cleanSingleLine(card?.id, 64, randomUUID()),
+      title: cleanSingleLine(card?.title, 36, "Carta sem titulo"),
+      category: cleanSingleLine(card?.category, 24, "Pergunta"),
+      question: cleanMultiLine(card?.question, 280),
+      color: cleanColor(card?.color),
+      kind: validateCardKind(card?.kind),
+      responseMode: validateCardResponseMode(card?.responseMode),
+      authorId: cleanSingleLine(card?.authorId, 64, "system"),
+      authorName: cleanSingleLine(card?.authorName, 24, "Sistema")
+    }))
+    .filter((card) => card.question);
+
+  if (!cards.length) {
+    return null;
+  }
+
+  const cardIds = new Set(cards.map((card) => card.id));
+  const currentCardId = cardIds.has(record?.currentCardId) ? record.currentCardId : null;
+  const rawDrawPile = Array.isArray(record?.drawPile) ? record.drawPile : [];
+  const drawPile = rawDrawPile.filter((cardId) => cardIds.has(cardId));
+  const hostId = players.some((player) => player.id === record?.hostId)
+    ? record.hostId
+    : players[0].id;
+  const activePlayerId = players.some((player) => player.id === record?.activePlayerId)
+    ? record.activePlayerId
+    : null;
+  const responderPlayerId = players.some((player) => player.id === record?.responderPlayerId)
+    ? record.responderPlayerId
+    : null;
+  const createdAt = Number(record?.createdAt) || Date.now();
+  const updatedAt = Number(record?.updatedAt) || createdAt;
+  const phase = record?.phase === "playing" || record?.phase === "finished"
+    ? record.phase
+    : "lobby";
+
+  return {
+    code: cleanSingleLine(record?.code, 5, generateRoomCode()),
+    hostId,
+    settings: {
+      cardsPerRound: validateCardsPerRound(record?.settings?.cardsPerRound, DEFAULT_CARDS_PER_ROUND),
+      timerSeconds: validateTimerSeconds(record?.settings?.timerSeconds, DEFAULT_TURN_TIMER_SECONDS)
+    },
+    appearance: {
+      cardThemeId: validateCardThemeId(record?.appearance?.cardThemeId, DEFAULT_CARD_THEME_ID),
+      backgroundId: validateBackgroundId(record?.appearance?.backgroundId, DEFAULT_BACKGROUND_ID)
+    },
+    activePlayerId,
+    responderPlayerId,
+    phase,
+    players,
+    cards,
+    roundCardTotal: Math.max(0, Math.min(cards.length, Number(record?.roundCardTotal) || cards.length)),
+    turnEndsAt: null,
+    chatMessages: (Array.isArray(record?.chatMessages) ? record.chatMessages : [])
+      .map((message) => ({
+        id: cleanSingleLine(message?.id, 64, randomUUID()),
+        playerId: cleanSingleLine(message?.playerId, 64, "system"),
+        playerName: cleanSingleLine(message?.playerName, 24, "Sistema"),
+        text: validateChatText(message?.text),
+        createdAt: Number(message?.createdAt) || updatedAt,
+        system: Boolean(message?.system)
+      }))
+      .filter((message) => message.text)
+      .slice(-MAX_CHAT_MESSAGES),
+    currentCardId,
+    drawPile,
+    connections: new Set(),
+    version: Math.max(1, Number(record?.version) || 1),
+    createdAt,
+    updatedAt,
+    turnTimerHandle: null
+  };
+}
+
+function serializeRoomForStorage(room) {
+  return {
+    code: room.code,
+    hostId: room.hostId,
+    settings: {
+      cardsPerRound: validateCardsPerRound(room.settings?.cardsPerRound, DEFAULT_CARDS_PER_ROUND),
+      timerSeconds: validateTimerSeconds(room.settings?.timerSeconds, DEFAULT_TURN_TIMER_SECONDS)
+    },
+    appearance: {
+      cardThemeId: validateCardThemeId(room.appearance?.cardThemeId, DEFAULT_CARD_THEME_ID),
+      backgroundId: validateBackgroundId(room.appearance?.backgroundId, DEFAULT_BACKGROUND_ID)
+    },
+    activePlayerId: room.activePlayerId,
+    responderPlayerId: room.responderPlayerId,
+    phase: room.phase,
+    players: room.players.map((player) => ({
+      id: player.id,
+      name: player.name,
+      isReady: Boolean(player.isReady)
+    })),
+    cards: room.cards.map((card) => ({
+      id: card.id,
+      title: card.title,
+      category: card.category,
+      question: card.question,
+      color: card.color,
+      kind: validateCardKind(card.kind),
+      responseMode: validateCardResponseMode(card.responseMode),
+      authorId: card.authorId,
+      authorName: card.authorName
+    })),
+    roundCardTotal: room.roundCardTotal,
+    chatMessages: (room.chatMessages || []).map((message) => ({
+      id: message.id,
+      playerId: message.playerId,
+      playerName: message.playerName,
+      text: message.text,
+      createdAt: message.createdAt,
+      system: Boolean(message.system)
+    })),
+    currentCardId: room.currentCardId,
+    drawPile: Array.isArray(room.drawPile) ? [...room.drawPile] : [],
+    version: room.version,
+    createdAt: room.createdAt,
+    updatedAt: room.updatedAt
+  };
+}
+
+function persistRoomState(room) {
+  const db = getDatabase();
+  const payload = serializeRoomForStorage(room);
+
+  db.prepare(`
+    INSERT INTO rooms (code, payload_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(code) DO UPDATE SET
+      payload_json = excluded.payload_json,
+      created_at = excluded.created_at,
+      updated_at = excluded.updated_at
+  `).run(
+    room.code,
+    JSON.stringify(payload),
+    Number(room.createdAt) || Date.now(),
+    Number(room.updatedAt) || Date.now()
+  );
+}
+
+function deletePersistedRoom(roomCode) {
+  getDatabase().prepare("DELETE FROM rooms WHERE code = ?").run(roomCode);
+}
+
+function migrateLegacySavedDecks() {
+  try {
+    const db = getDatabase();
+    const existingCount = Number(db.prepare("SELECT COUNT(*) AS count FROM saved_decks").get()?.count || 0);
+
+    if (existingCount > 0 || !fs.existsSync(SAVED_DECKS_FILE)) {
       return;
     }
 
     const raw = fs.readFileSync(SAVED_DECKS_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    savedDecks = Array.isArray(parsed) ? parsed : [];
+    const parsed = safeParseJson(raw, []);
+
+    if (!Array.isArray(parsed) || !parsed.length) {
+      return;
+    }
+
+    const insertDeck = db.prepare(`
+      INSERT INTO saved_decks (id, name, cards_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        cards_json = excluded.cards_json,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at
+    `);
+
+    const saveAll = db.transaction((records) => {
+      records.forEach((record) => {
+        const normalizedDeck = normalizeStoredDeckRecord(record);
+
+        if (!normalizedDeck) {
+          return;
+        }
+
+        insertDeck.run(
+          normalizedDeck.id,
+          normalizedDeck.name,
+          JSON.stringify(normalizedDeck.cards),
+          normalizedDeck.createdAt,
+          normalizedDeck.updatedAt
+        );
+      });
+    });
+
+    saveAll(parsed);
+  } catch (error) {
+    savedDecks = [];
+  }
+}
+
+function loadSavedDecks() {
+  try {
+    migrateLegacySavedDecks();
+    const db = getDatabase();
+    const rows = db.prepare(`
+      SELECT id, name, cards_json, created_at, updated_at
+      FROM saved_decks
+      ORDER BY updated_at DESC
+    `).all();
+
+    savedDecks = rows
+      .map((row) => normalizeStoredDeckRecord({
+        id: row.id,
+        name: row.name,
+        cards: safeParseJson(row.cards_json, []),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }))
+      .filter(Boolean);
   } catch (error) {
     savedDecks = [];
   }
 }
 
 function persistSavedDecks() {
-  ensureDataDir();
-  fs.writeFileSync(SAVED_DECKS_FILE, JSON.stringify(savedDecks, null, 2), "utf-8");
+  const db = getDatabase();
+  const replaceAllDecks = db.transaction((decks) => {
+    db.exec("DELETE FROM saved_decks");
+    const insertDeck = db.prepare(`
+      INSERT INTO saved_decks (id, name, cards_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    decks.forEach((deck) => {
+      const normalizedDeck = normalizeStoredDeckRecord(deck);
+
+      if (!normalizedDeck) {
+        return;
+      }
+
+      insertDeck.run(
+        normalizedDeck.id,
+        normalizedDeck.name,
+        JSON.stringify(normalizedDeck.cards),
+        normalizedDeck.createdAt,
+        normalizedDeck.updatedAt
+      );
+    });
+  });
+
+  replaceAllDecks(savedDecks);
+}
+
+function loadPersistedRooms() {
+  try {
+    const expiration = Date.now() - ROOM_TTL_MS;
+    const db = getDatabase();
+    const rows = db.prepare(`
+      SELECT code, payload_json, updated_at
+      FROM rooms
+      ORDER BY updated_at DESC
+    `).all();
+
+    rows.forEach((row) => {
+      if (Number(row.updated_at) < expiration) {
+        deletePersistedRoom(row.code);
+        return;
+      }
+
+      const payload = safeParseJson(row.payload_json, null);
+      const room = normalizeStoredRoomRecord(payload);
+
+      if (!room) {
+        deletePersistedRoom(row.code);
+        return;
+      }
+
+      rooms.set(room.code, room);
+
+      if (room.phase === "playing" && room.currentCardId) {
+        scheduleRoundTimer(room);
+      }
+    });
+  } catch (error) {
+    rooms.clear();
+  }
 }
 
 function sendJson(response, statusCode, payload) {
@@ -265,12 +599,14 @@ function createRoom(hostName) {
     text: `Sala ${room.code} criada. Monte o baralho e espere todo mundo marcar pronto.`,
     system: true
   });
+  persistRoomState(room);
   return { room, playerId: host.id };
 }
 
 function touchRoom(room) {
   room.updatedAt = Date.now();
   room.version += 1;
+  persistRoomState(room);
 }
 
 function getRoom(code) {
@@ -458,6 +794,7 @@ function closeRoom(room, reason = "Sala encerrada.") {
 
   room.connections.clear();
   rooms.delete(room.code);
+  deletePersistedRoom(room.code);
 }
 
 function disconnectPlayerConnections(room, playerId, eventName, payload) {
@@ -1711,7 +2048,9 @@ function cleanupRooms() {
   }
 }
 
+getDatabase();
 loadSavedDecks();
+loadPersistedRooms();
 setInterval(cleanupRooms, 15 * 60 * 1000).unref();
 
 const server = http.createServer(async (request, response) => {

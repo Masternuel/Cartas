@@ -3,5 +3,7 @@ node_modules/
 .server.out.log
 .server.err.log
 saved-decks.json
+*.sqlite
+*.db
 .DS_Store
 Thumbs.db
