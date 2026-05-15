@@ -10,6 +10,22 @@ const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : __d
 const SAVED_DECKS_FILE = path.join(DATA_DIR, "saved-decks.json");
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_PLAYERS_PER_ROOM = 12;
+const DEFAULT_CARD_THEME_ID = "azure-whisper";
+const DEFAULT_BACKGROUND_ID = "midnight-veil";
+const CARD_THEME_IDS = new Set([
+  "azure-whisper",
+  "crimson-velvet",
+  "violet-lock",
+  "lunar-neon",
+  "obsidian-gold"
+]);
+const BACKGROUND_IDS = new Set([
+  "midnight-veil",
+  "violet-lounge",
+  "ivory-glow",
+  "stargazer-blue",
+  "ember-parlor"
+]);
 const rooms = new Map();
 let savedDecks = [];
 
@@ -193,6 +209,10 @@ function createRoom(hostName) {
   const room = {
     code: generateRoomCode(),
     hostId: host.id,
+    appearance: {
+      cardThemeId: DEFAULT_CARD_THEME_ID,
+      backgroundId: DEFAULT_BACKGROUND_ID
+    },
     activePlayerId: null,
     phase: "lobby",
     players: [host],
@@ -249,6 +269,7 @@ function playerCanEditCard(room, viewerId, card) {
 }
 
 function serializeRoom(room, viewerId) {
+  const appearance = room.appearance || {};
   const currentCard = room.currentCardId
     ? room.cards.find((card) => card.id === room.currentCardId) || null
     : null;
@@ -262,6 +283,10 @@ function serializeRoom(room, viewerId) {
     viewerId,
     isHost: viewerId === room.hostId,
     hostId: room.hostId,
+    appearance: {
+      cardThemeId: validateCardThemeId(appearance.cardThemeId),
+      backgroundId: validateBackgroundId(appearance.backgroundId)
+    },
     activePlayerId: room.activePlayerId,
     version: room.version,
     players: room.players.map((player) => ({
@@ -364,6 +389,16 @@ function validateDeckName(value, fallback = "Deck sem nome") {
   return cleanSingleLine(value, 40, fallback);
 }
 
+function validateCardThemeId(value, fallback = DEFAULT_CARD_THEME_ID) {
+  const themeId = cleanSingleLine(value, 32, fallback);
+  return CARD_THEME_IDS.has(themeId) ? themeId : fallback;
+}
+
+function validateBackgroundId(value, fallback = DEFAULT_BACKGROUND_ID) {
+  const backgroundId = cleanSingleLine(value, 32, fallback);
+  return BACKGROUND_IDS.has(backgroundId) ? backgroundId : fallback;
+}
+
 function serializeDeck(deck) {
   return {
     id: deck.id,
@@ -397,10 +432,24 @@ function startRoomRound(room) {
   room.phase = "playing";
   room.drawPile = shuffle(room.cards.map((card) => card.id));
   room.currentCardId = room.drawPile.shift() || null;
-  room.activePlayerId = room.players[0]?.id || null;
+  room.activePlayerId = room.drawPile.length > 0
+    ? room.players[0]?.id || null
+    : null;
   room.players.forEach((currentPlayer) => {
     currentPlayer.isReady = false;
   });
+}
+
+function canAdvanceRound(room, playerId) {
+  if (room.phase !== "playing" || !room.currentCardId) {
+    return false;
+  }
+
+  if (!room.activePlayerId) {
+    return true;
+  }
+
+  return room.activePlayerId === playerId;
 }
 
 async function handleCreateRoom(request, response) {
@@ -760,6 +809,35 @@ async function handleDeleteDeck(request, response, roomCode, deckId) {
   }
 }
 
+async function handleUpdateAppearance(request, response, roomCode) {
+  const payload = await collectJson(request);
+
+  try {
+    const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
+    assertHost(room, player.id);
+
+    room.appearance = {
+      cardThemeId: validateCardThemeId(
+        payload.cardThemeId,
+        room.appearance?.cardThemeId || DEFAULT_CARD_THEME_ID
+      ),
+      backgroundId: validateBackgroundId(
+        payload.backgroundId,
+        room.appearance?.backgroundId || DEFAULT_BACKGROUND_ID
+      )
+    };
+
+    touchRoom(room);
+    broadcastRoom(room);
+
+    sendJson(response, 200, {
+      state: serializeRoom(room, player.id)
+    });
+  } catch (error) {
+    sendError(response, error.statusCode || 400, error.message);
+  }
+}
+
 async function handleSetReady(request, response, roomCode) {
   const payload = await collectJson(request);
 
@@ -817,18 +895,33 @@ async function handleNextCard(request, response, roomCode) {
 
   try {
     const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
-    assertHost(room, player.id);
 
     if (room.phase !== "playing") {
       throw Object.assign(new Error("A rodada ainda nao comecou."), { statusCode: 409 });
     }
 
-    room.activePlayerId = getNextPlayerId(room, room.activePlayerId);
+    if (!canAdvanceRound(room, player.id)) {
+      const activePlayer = getPlayer(room, room.activePlayerId);
+      throw Object.assign(
+        new Error(
+          activePlayer
+            ? `Agora e a vez de ${activePlayer.name} puxar a proxima carta.`
+            : "Ainda nao e a sua vez de puxar a proxima carta."
+        ),
+        { statusCode: 403 }
+      );
+    }
+
+    const currentPullerId = room.activePlayerId;
     room.currentCardId = room.drawPile.shift() || null;
 
     if (!room.currentCardId) {
       room.phase = "finished";
       room.activePlayerId = null;
+    } else if (!room.drawPile.length) {
+      room.activePlayerId = null;
+    } else {
+      room.activePlayerId = getNextPlayerId(room, currentPullerId);
     }
 
     touchRoom(room);
@@ -903,6 +996,11 @@ async function handleApi(request, response, pathname, url) {
 
   if (request.method === "POST" && segments[3] === "ready") {
     await handleSetReady(request, response, roomCode);
+    return true;
+  }
+
+  if (request.method === "POST" && segments[3] === "appearance") {
+    await handleUpdateAppearance(request, response, roomCode);
     return true;
   }
 

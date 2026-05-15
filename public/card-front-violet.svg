@@ -1,0 +1,41 @@
+<svg width="768" height="1152" viewBox="0 0 768 1152" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="paper" x1="40" y1="34" x2="728" y2="1116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF9FF" />
+      <stop offset="1" stop-color="#F1E4F9" />
+    </linearGradient>
+    <linearGradient id="violet" x1="92" y1="92" x2="676" y2="1060" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8F65BE" />
+      <stop offset="1" stop-color="#5A367F" />
+    </linearGradient>
+    <linearGradient id="gold" x1="92" y1="92" x2="676" y2="1060" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E3C57B" />
+      <stop offset="1" stop-color="#B79043" />
+    </linearGradient>
+  </defs>
+
+  <rect x="12" y="12" width="744" height="1128" rx="56" fill="url(#paper)" />
+  <rect x="24" y="24" width="720" height="1104" rx="52" stroke="#EBDDF6" stroke-width="2" />
+  <rect x="84" y="92" width="600" height="968" rx="34" stroke="url(#violet)" stroke-width="2.6" />
+
+  <path d="M114 120C114 101.775 128.775 87 147 87" stroke="url(#violet)" stroke-width="3.2" stroke-linecap="round" />
+  <path d="M654 120C654 101.775 639.225 87 621 87" stroke="url(#violet)" stroke-width="3.2" stroke-linecap="round" />
+  <path d="M114 1032C114 1050.22 128.775 1065 147 1065" stroke="url(#violet)" stroke-width="3.2" stroke-linecap="round" />
+  <path d="M654 1032C654 1050.22 639.225 1065 621 1065" stroke="url(#violet)" stroke-width="3.2" stroke-linecap="round" />
+
+  <path d="M384 118L392 132L408 140L392 148L384 162L376 148L360 140L376 132L384 118Z" fill="url(#gold)" />
+  <path d="M348 156H420" stroke="url(#violet)" stroke-width="2" stroke-linecap="round" />
+  <path d="M88 180V972" stroke="url(#gold)" stroke-width="2" />
+  <path d="M680 180V972" stroke="url(#violet)" stroke-width="2" />
+
+  <circle cx="102" cy="578" r="5.5" fill="#65428D" />
+  <circle cx="666" cy="578" r="5.5" fill="#65428D" />
+  <circle cx="102" cy="734" r="3.5" fill="#C9A45C" />
+  <circle cx="666" cy="734" r="3.5" fill="#C9A45C" />
+
+  <path d="M384 884L406 910L384 936L362 910L384 884Z" stroke="#7C55A7" stroke-width="3" />
+  <path d="M384 844L398 866L424 874L398 882L384 904L370 882L344 874L370 866L384 844Z" fill="#C59C4E" />
+  <path d="M304 1030H356" stroke="#7C55A7" stroke-width="2" stroke-linecap="round" />
+  <path d="M412 1030H464" stroke="#7C55A7" stroke-width="2" stroke-linecap="round" />
+  <circle cx="384" cy="1030" r="3.5" fill="#7C55A7" />
+</svg>

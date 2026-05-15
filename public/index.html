@@ -122,6 +122,9 @@
                 <button id="tab-cards" class="room-tab" type="button" data-tab="cards">
                   Editar cartas
                 </button>
+                <button id="tab-themes" class="room-tab" type="button" data-tab="themes">
+                  Tema e fundo
+                </button>
               </nav>
             </section>
 
@@ -239,6 +242,7 @@
                 <div class="start-shortcuts">
                   <button class="ghost-btn" type="button" data-open-tab="table">Abrir mesa</button>
                   <button class="ghost-btn" type="button" data-open-tab="cards">Editar cartas</button>
+                  <button class="ghost-btn" type="button" data-open-tab="themes">Tema e fundo</button>
                 </div>
               </section>
             </div>
@@ -292,8 +296,8 @@
 
                   <input id="card-color" name="color" type="hidden" value="#c79d51" />
                   <p class="card-style-note">
-                    A arte das cartas segue o modelo fixo do baralho:
-                    frente clara para a pergunta e verso escuro para o lado de tras.
+                    O texto da carta usa o tema escolhido na aba de tema e fundo,
+                    com frente e verso sincronizados para a sala inteira.
                   </p>
                 </fieldset>
 
@@ -354,6 +358,57 @@
                 <div id="saved-decks-list" class="saved-decks-list"></div>
               </div>
             </section>
+          </div>
+        </section>
+
+        <section id="themes-view" class="room-view room-view--themes hidden">
+          <div class="themes-layout">
+            <header class="panel themes-hero">
+              <div class="themes-hero__copy">
+                <p class="eyebrow">Direcao visual</p>
+                <h2>Sete o clima da sala</h2>
+                <p id="themes-copy" class="board-subtitle">
+                  Escolha um tema para as cartas e um background para a sala inteira. O visual
+                  atualiza ao vivo para todo mundo.
+                </p>
+              </div>
+
+              <div class="themes-hero__status">
+                <span class="phase-pill">Aplicado ao vivo</span>
+              </div>
+            </header>
+
+            <div class="themes-grid">
+              <section class="panel themes-panel">
+                <div class="section-heading">
+                  <div>
+                    <p class="card-kicker">Tema das cartas</p>
+                    <h3>Escolha o estilo do baralho</h3>
+                  </div>
+                </div>
+
+                <p class="themes-panel__copy">
+                  Frente, verso e detalhes do baralho acompanham o tema escolhido.
+                </p>
+
+                <div id="card-theme-grid" class="theme-choice-grid"></div>
+              </section>
+
+              <section class="panel themes-panel">
+                <div class="section-heading">
+                  <div>
+                    <p class="card-kicker">Background da sala</p>
+                    <h3>Defina o ambiente da rodada</h3>
+                  </div>
+                </div>
+
+                <p class="themes-panel__copy">
+                  O fundo muda o clima do lobby, da mesa e da aba de edicao.
+                </p>
+
+                <div id="background-grid" class="background-choice-grid"></div>
+              </section>
+            </div>
           </div>
         </section>
       </section>

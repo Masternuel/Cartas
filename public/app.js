@@ -2,6 +2,215 @@ const SESSION_KEY = "carta-viva-session";
 const LOCAL_DECKS_KEY = "carta-viva-local-decks";
 const AUDIO_VOLUME_KEY = "carta-viva-audio-volume";
 const DEFAULT_AUDIO_VOLUME = 0.05;
+const FINAL_SCREEN_IMAGES = [
+  {
+    src: "/thanks-finish.png",
+    alt: "Obrigado por jogar"
+  },
+  {
+    src: "/finish-whatsapp-1.jpeg",
+    alt: "Foto final do grupo 1"
+  },
+  {
+    src: "/finish-whatsapp-2.jpeg",
+    alt: "Foto final do grupo 2"
+  }
+];
+const DEFAULT_ROOM_APPEARANCE = {
+  cardThemeId: "azure-whisper",
+  backgroundId: "midnight-veil"
+};
+const CARD_THEME_PRESETS = [
+  {
+    id: "azure-whisper",
+    name: "Azul sutil",
+    description: "Classico claro com traco azul e verso marinho.",
+    previewTitle: "Conexao leve",
+    previewQuestion: "Qual lembranca simples te faz sorrir?",
+    style: {
+      "--card-front": "#f5efe2",
+      "--card-front-asset": "url('/card-front.svg')",
+      "--card-back": "#131d28",
+      "--card-back-asset": "url('/card-back.svg')",
+      "--card-ink": "#233040",
+      "--card-ink-soft": "rgba(35, 48, 64, 0.84)",
+      "--card-label-bg": "rgba(45, 86, 146, 0.12)",
+      "--card-label-border": "rgba(45, 86, 146, 0.22)",
+      "--card-label-text": "#345b92",
+      "--card-label-soft-bg": "rgba(35, 48, 64, 0.08)",
+      "--card-label-soft-border": "rgba(35, 48, 64, 0.14)",
+      "--card-label-soft-text": "rgba(35, 48, 64, 0.78)",
+      "--card-note-ink": "rgba(35, 48, 64, 0.62)"
+    }
+  },
+  {
+    id: "crimson-velvet",
+    name: "Veludo carmim",
+    description: "Marfim quente com detalhes rubi e verso vinho.",
+    previewTitle: "Segredo doce",
+    previewQuestion: "Que pedido de desculpas voce sonha ouvir?",
+    style: {
+      "--card-front": "#fff4ed",
+      "--card-front-asset": "url('/card-front-crimson.svg')",
+      "--card-back": "#35171d",
+      "--card-back-asset": "url('/card-back-crimson.svg')",
+      "--card-ink": "#5f2a2f",
+      "--card-ink-soft": "rgba(95, 42, 47, 0.84)",
+      "--card-label-bg": "rgba(157, 49, 59, 0.14)",
+      "--card-label-border": "rgba(157, 49, 59, 0.24)",
+      "--card-label-text": "#8f2f39",
+      "--card-label-soft-bg": "rgba(95, 42, 47, 0.08)",
+      "--card-label-soft-border": "rgba(95, 42, 47, 0.12)",
+      "--card-label-soft-text": "rgba(95, 42, 47, 0.76)",
+      "--card-note-ink": "rgba(95, 42, 47, 0.58)"
+    }
+  },
+  {
+    id: "violet-lock",
+    name: "Cofre violeta",
+    description: "Roxo com ouro, inspirado em caixa baixa.",
+    previewTitle: "Cofre aberto",
+    previewQuestion: "O que voce ainda nao disse, mas queria?",
+    style: {
+      "--card-front": "#fbf2ff",
+      "--card-front-asset": "url('/card-front-violet.svg')",
+      "--card-back": "#3e2350",
+      "--card-back-asset": "url('/card-back-violet.svg')",
+      "--card-ink": "#4d3066",
+      "--card-ink-soft": "rgba(77, 48, 102, 0.84)",
+      "--card-label-bg": "rgba(145, 111, 189, 0.16)",
+      "--card-label-border": "rgba(145, 111, 189, 0.3)",
+      "--card-label-text": "#7c58a7",
+      "--card-label-soft-bg": "rgba(77, 48, 102, 0.08)",
+      "--card-label-soft-border": "rgba(77, 48, 102, 0.14)",
+      "--card-label-soft-text": "rgba(77, 48, 102, 0.76)",
+      "--card-note-ink": "rgba(77, 48, 102, 0.58)"
+    }
+  },
+  {
+    id: "lunar-neon",
+    name: "Lunar neon",
+    description: "Noite magenta com brilho mistico.",
+    previewTitle: "Lua viva",
+    previewQuestion: "Qual energia voce quer sentir hoje?",
+    style: {
+      "--card-front": "#241429",
+      "--card-front-asset": "url('/card-front-lunar.svg')",
+      "--card-back": "#180f22",
+      "--card-back-asset": "url('/card-back-lunar.svg')",
+      "--card-ink": "#ffe2ff",
+      "--card-ink-soft": "rgba(255, 226, 255, 0.84)",
+      "--card-label-bg": "rgba(255, 122, 236, 0.16)",
+      "--card-label-border": "rgba(255, 122, 236, 0.28)",
+      "--card-label-text": "#ffcfff",
+      "--card-label-soft-bg": "rgba(255, 255, 255, 0.08)",
+      "--card-label-soft-border": "rgba(255, 255, 255, 0.12)",
+      "--card-label-soft-text": "rgba(255, 226, 255, 0.72)",
+      "--card-note-ink": "rgba(255, 226, 255, 0.56)"
+    }
+  },
+  {
+    id: "obsidian-gold",
+    name: "Obsidiana dourada",
+    description: "Preto profundo com linhas douradas e aura celestial.",
+    previewTitle: "Mapa estelar",
+    previewQuestion: "Que desejo voce faria se a noite respondesse?",
+    style: {
+      "--card-front": "#141313",
+      "--card-front-asset": "url('/card-front-obsidian.svg')",
+      "--card-back": "#0b0b0c",
+      "--card-back-asset": "url('/card-back-obsidian.svg')",
+      "--card-ink": "#f7e3a4",
+      "--card-ink-soft": "rgba(247, 227, 164, 0.84)",
+      "--card-label-bg": "rgba(237, 192, 87, 0.14)",
+      "--card-label-border": "rgba(237, 192, 87, 0.28)",
+      "--card-label-text": "#f5d67a",
+      "--card-label-soft-bg": "rgba(247, 227, 164, 0.08)",
+      "--card-label-soft-border": "rgba(247, 227, 164, 0.12)",
+      "--card-label-soft-text": "rgba(247, 227, 164, 0.72)",
+      "--card-note-ink": "rgba(247, 227, 164, 0.56)"
+    }
+  }
+];
+const BACKGROUND_PRESETS = [
+  {
+    id: "midnight-veil",
+    name: "Midnight veil",
+    description: "Escuro classico com brilho frio e palco preto.",
+    style: {
+      "--room-shell-bg": "radial-gradient(circle at top left, rgba(89, 77, 163, 0.2), transparent 28%), radial-gradient(circle at top right, rgba(31, 182, 156, 0.14), transparent 32%), linear-gradient(145deg, #0c0d16 0%, #12172a 48%, #050608 100%)",
+      "--room-panel-bg": "linear-gradient(180deg, rgba(26, 30, 53, 0.9), rgba(9, 12, 24, 0.94))",
+      "--room-panel-border": "rgba(255, 255, 255, 0.1)",
+      "--room-panel-shadow": "0 28px 80px rgba(2, 6, 23, 0.35)",
+      "--room-panel-gloss": "linear-gradient(135deg, rgba(255, 255, 255, 0.05), transparent 45%)",
+      "--room-drawer-bg": "linear-gradient(180deg, rgba(18, 22, 43, 0.98), rgba(8, 10, 18, 0.98))",
+      "--room-section-bg": "rgba(255, 255, 255, 0.04)",
+      "--room-table-bg": "#000000"
+    }
+  },
+  {
+    id: "violet-lounge",
+    name: "Violet lounge",
+    description: "Roxo vinho com fundo de sala mais dramatico.",
+    style: {
+      "--room-shell-bg": "radial-gradient(circle at top left, rgba(255, 99, 180, 0.16), transparent 22%), radial-gradient(circle at right, rgba(160, 118, 255, 0.22), transparent 28%), linear-gradient(150deg, #1e1129 0%, #2f193f 46%, #0b0b16 100%)",
+      "--room-panel-bg": "linear-gradient(180deg, rgba(53, 26, 76, 0.9), rgba(20, 11, 32, 0.94))",
+      "--room-panel-border": "rgba(241, 193, 255, 0.14)",
+      "--room-panel-shadow": "0 28px 80px rgba(16, 5, 28, 0.46)",
+      "--room-panel-gloss": "linear-gradient(135deg, rgba(255, 214, 255, 0.08), transparent 48%)",
+      "--room-drawer-bg": "linear-gradient(180deg, rgba(42, 19, 63, 0.98), rgba(14, 8, 24, 0.98))",
+      "--room-section-bg": "rgba(255, 255, 255, 0.05)",
+      "--room-table-bg": "radial-gradient(circle at center, rgba(70, 39, 104, 0.16), transparent 26%), #09070d"
+    }
+  },
+  {
+    id: "ivory-glow",
+    name: "Ivory glow",
+    description: "Fundo claro sofisticado com paineis ainda legiveis.",
+    style: {
+      "--room-shell-bg": "radial-gradient(circle at top left, rgba(245, 210, 142, 0.26), transparent 24%), radial-gradient(circle at top right, rgba(124, 168, 255, 0.18), transparent 28%), linear-gradient(145deg, #f7f0e3 0%, #eadfd1 42%, #e6ddd2 100%)",
+      "--room-panel-bg": "linear-gradient(180deg, rgba(45, 37, 57, 0.9), rgba(18, 14, 28, 0.94))",
+      "--room-panel-border": "rgba(255, 255, 255, 0.16)",
+      "--room-panel-shadow": "0 28px 72px rgba(74, 46, 19, 0.16)",
+      "--room-panel-gloss": "linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 52%)",
+      "--room-drawer-bg": "linear-gradient(180deg, rgba(36, 30, 47, 0.98), rgba(18, 14, 26, 0.98))",
+      "--room-section-bg": "rgba(255, 255, 255, 0.06)",
+      "--room-table-bg": "radial-gradient(circle at center, rgba(248, 225, 180, 0.08), transparent 26%), #111010"
+    }
+  },
+  {
+    id: "stargazer-blue",
+    name: "Stargazer blue",
+    description: "Azul profundo com brilho de observatorio.",
+    style: {
+      "--room-shell-bg": "radial-gradient(circle at top left, rgba(124, 223, 255, 0.16), transparent 24%), radial-gradient(circle at top right, rgba(34, 197, 94, 0.12), transparent 26%), linear-gradient(145deg, #08111d 0%, #10243d 42%, #050a12 100%)",
+      "--room-panel-bg": "linear-gradient(180deg, rgba(16, 36, 61, 0.92), rgba(5, 12, 24, 0.96))",
+      "--room-panel-border": "rgba(163, 213, 255, 0.14)",
+      "--room-panel-shadow": "0 28px 80px rgba(2, 8, 20, 0.42)",
+      "--room-panel-gloss": "linear-gradient(135deg, rgba(255, 255, 255, 0.06), transparent 45%)",
+      "--room-drawer-bg": "linear-gradient(180deg, rgba(11, 30, 52, 0.98), rgba(4, 10, 20, 0.98))",
+      "--room-section-bg": "rgba(255, 255, 255, 0.05)",
+      "--room-table-bg": "radial-gradient(circle at center, rgba(74, 181, 255, 0.14), transparent 28%), #020507"
+    }
+  },
+  {
+    id: "ember-parlor",
+    name: "Ember parlor",
+    description: "Baralho em uma sala quente de vinho e cobre.",
+    style: {
+      "--room-shell-bg": "radial-gradient(circle at top left, rgba(255, 155, 88, 0.18), transparent 24%), radial-gradient(circle at right, rgba(255, 70, 84, 0.18), transparent 28%), linear-gradient(145deg, #211111 0%, #3a1b1f 42%, #12090a 100%)",
+      "--room-panel-bg": "linear-gradient(180deg, rgba(68, 26, 28, 0.92), rgba(28, 10, 12, 0.96))",
+      "--room-panel-border": "rgba(255, 202, 184, 0.14)",
+      "--room-panel-shadow": "0 28px 80px rgba(25, 7, 7, 0.44)",
+      "--room-panel-gloss": "linear-gradient(135deg, rgba(255, 222, 214, 0.06), transparent 48%)",
+      "--room-drawer-bg": "linear-gradient(180deg, rgba(56, 18, 20, 0.98), rgba(22, 8, 9, 0.98))",
+      "--room-section-bg": "rgba(255, 255, 255, 0.05)",
+      "--room-table-bg": "radial-gradient(circle at center, rgba(255, 133, 88, 0.12), transparent 28%), #070304"
+    }
+  }
+];
+const CARD_THEME_MAP = new Map(CARD_THEME_PRESETS.map((preset) => [preset.id, preset]));
+const BACKGROUND_MAP = new Map(BACKGROUND_PRESETS.map((preset) => [preset.id, preset]));
 
 const state = {
   room: null,
@@ -33,9 +242,11 @@ const elements = {
   startView: document.getElementById("start-view"),
   tableView: document.getElementById("table-view"),
   cardsView: document.getElementById("cards-view"),
+  themesView: document.getElementById("themes-view"),
   tabStart: document.getElementById("tab-start"),
   tabTable: document.getElementById("tab-table"),
   tabCards: document.getElementById("tab-cards"),
+  tabThemes: document.getElementById("tab-themes"),
   createRoomForm: document.getElementById("create-room-form"),
   joinRoomForm: document.getElementById("join-room-form"),
   joinCodeInput: document.getElementById("join-code"),
@@ -80,6 +291,9 @@ const elements = {
   deckList: document.getElementById("deck-list"),
   savedDecksCount: document.getElementById("saved-decks-count"),
   savedDecksList: document.getElementById("saved-decks-list"),
+  themesCopy: document.getElementById("themes-copy"),
+  cardThemeGrid: document.getElementById("card-theme-grid"),
+  backgroundGrid: document.getElementById("background-grid"),
   audioVolume: document.getElementById("audio-volume"),
   audioVolumeValue: document.getElementById("audio-volume-value"),
   shuffleAudio: document.getElementById("shuffle-audio"),
@@ -95,7 +309,8 @@ function setActiveTab(tabName) {
   const tabs = [
     { name: "start", button: elements.tabStart, view: elements.startView },
     { name: "table", button: elements.tabTable, view: elements.tableView },
-    { name: "cards", button: elements.tabCards, view: elements.cardsView }
+    { name: "cards", button: elements.tabCards, view: elements.cardsView },
+    { name: "themes", button: elements.tabThemes, view: elements.themesView }
   ];
 
   tabs.forEach(({ name, button, view }) => {
@@ -322,6 +537,41 @@ function syncLobbyAudio() {
 function initializeAudioPreferences() {
   state.audioVolume = loadStoredAudioVolume();
   applyAudioVolume();
+}
+
+function getCardThemePreset(themeId) {
+  return CARD_THEME_MAP.get(themeId) || CARD_THEME_MAP.get(DEFAULT_ROOM_APPEARANCE.cardThemeId);
+}
+
+function getBackgroundPreset(backgroundId) {
+  return BACKGROUND_MAP.get(backgroundId) || BACKGROUND_MAP.get(DEFAULT_ROOM_APPEARANCE.backgroundId);
+}
+
+function getRoomAppearance(room) {
+  return {
+    cardThemeId: room?.appearance?.cardThemeId || DEFAULT_ROOM_APPEARANCE.cardThemeId,
+    backgroundId: room?.appearance?.backgroundId || DEFAULT_ROOM_APPEARANCE.backgroundId
+  };
+}
+
+function applyStyleVariables(target, variables = {}) {
+  Object.entries(variables).forEach(([name, value]) => {
+    target.style.setProperty(name, value);
+  });
+}
+
+function applyRoomAppearance(room) {
+  const appearance = getRoomAppearance(room);
+  const cardTheme = getCardThemePreset(appearance.cardThemeId);
+  const backgroundTheme = getBackgroundPreset(appearance.backgroundId);
+  const mergedVariables = {
+    ...cardTheme.style,
+    ...backgroundTheme.style
+  };
+
+  applyStyleVariables(elements.pageShell, mergedVariables);
+  elements.pageShell.dataset.cardTheme = cardTheme.id;
+  elements.pageShell.dataset.backgroundTheme = backgroundTheme.id;
 }
 
 function normalizeSingleLine(value, maxLength, fallback = "") {
@@ -735,6 +985,18 @@ function getActivePlayer(room) {
   return room.players.find((player) => player.id === room.activePlayerId) || null;
 }
 
+function canViewerAdvanceCard(room) {
+  if (!room || room.phase !== "playing" || !room.currentCard) {
+    return false;
+  }
+
+  if (!room.activePlayerId) {
+    return true;
+  }
+
+  return room.viewerId === room.activePlayerId;
+}
+
 function getSeatPosition(index, total) {
   const layouts = {
     1: [{ x: 10, y: 50 }],
@@ -879,10 +1141,18 @@ function createFinishScreen() {
   const wrap = document.createElement("section");
   wrap.className = "table-finish-screen";
 
-  const image = document.createElement("img");
-  image.className = "table-finish-screen__image";
-  image.src = "/thanks-finish.png";
-  image.alt = "Obrigado por jogar";
+  const gallery = document.createElement("div");
+  gallery.className = "table-finish-screen__gallery";
+  gallery.style.setProperty("--finish-slides", String(FINAL_SCREEN_IMAGES.length));
+
+  FINAL_SCREEN_IMAGES.forEach((item, index) => {
+    const image = document.createElement("img");
+    image.className = "table-finish-screen__image";
+    image.src = item.src;
+    image.alt = item.alt;
+    image.style.setProperty("--slide-index", String(index));
+    gallery.append(image);
+  });
 
   const content = document.createElement("div");
   content.className = "table-finish-screen__content";
@@ -891,12 +1161,12 @@ function createFinishScreen() {
   content.append(
     createTextElement(
       "p",
-      "A rodada terminou. Abra o menu para reiniciar a partida ou voltar ao lobby e montar novas cartas.",
+      "A rodada terminou. Curte as fotos finais e abra o menu para reiniciar a partida ou voltar ao lobby e montar novas cartas.",
       "table-finish-screen__copy"
     )
   );
 
-  wrap.append(image, content);
+  wrap.append(gallery, content);
   return wrap;
 }
 
@@ -905,8 +1175,14 @@ async function handlePileAdvance() {
     return;
   }
 
-  if (!state.room.isHost) {
-    showToast("Apenas o anfitriao pode virar a proxima carta.");
+  const activePlayer = getActivePlayer(state.room);
+
+  if (!canViewerAdvanceCard(state.room)) {
+    showToast(
+      activePlayer
+        ? `Agora e a vez de ${activePlayer.name} puxar a proxima carta.`
+        : "Espere a rodada liberar a proxima puxada."
+    );
     return;
   }
 
@@ -1350,7 +1626,7 @@ function renderBoardCopy(room) {
   if (room.phase === "lobby") {
     elements.boardTitle.textContent = "Prepare a mesa e distribua os jogadores";
     elements.boardSubtitle.textContent =
-      "As cartas ficam editaveis apenas no lobby. Quando todos marcarem pronto, a rodada comeca automaticamente.";
+      "Edite cartas, escolha o tema e deixe todos marcarem pronto. Quando a sala inteira confirmar, a rodada comeca automaticamente.";
     return;
   }
 
@@ -1373,6 +1649,7 @@ function renderBoardCopy(room) {
 function render() {
   const room = state.room;
   const inRoom = Boolean(room);
+  applyRoomAppearance(room);
   elements.welcomeScreen.classList.toggle("hidden", inRoom);
   elements.gameScreen.classList.toggle("hidden", !inRoom);
   elements.openRoomMenuButton.classList.toggle("hidden", !inRoom);
@@ -1387,7 +1664,7 @@ function render() {
     return;
   }
 
-  if (!["start", "table", "cards"].includes(state.activeTab)) {
+  if (!["start", "table", "cards", "themes"].includes(state.activeTab)) {
     state.activeTab = room.phase === "playing" ? "table" : "start";
   }
 
@@ -1395,6 +1672,7 @@ function render() {
   renderCurrentCard(room);
   renderDeck(room);
   renderSavedDecks(room);
+  renderThemeStudio(room);
   renderBoardCopy(room);
 
   elements.roomCode.textContent = room.roomCode;
@@ -1428,7 +1706,7 @@ function render() {
   }
 
   elements.startGameButton.disabled = !room.isHost || room.stats.totalCards === 0;
-  elements.nextCardButton.disabled = !room.isHost || room.phase !== "playing" || !room.currentCard;
+  elements.nextCardButton.disabled = !canViewerAdvanceCard(room);
   elements.resetGameButton.disabled = !room.isHost || room.phase === "lobby";
   elements.startGameButton.textContent =
     room.phase === "lobby" ? "Comecar rodada agora" : "Reiniciar rodada";
@@ -1626,6 +1904,132 @@ function renderSavedDecks(room) {
   });
 }
 
+function renderThemeStudio(room) {
+  const appearance = getRoomAppearance(room);
+  const isHost = Boolean(room.isHost);
+  elements.cardThemeGrid.replaceChildren();
+  elements.backgroundGrid.replaceChildren();
+
+  elements.themesCopy.textContent = isHost
+    ? "Escolha um tema para as cartas e um background para a sala inteira. O visual atualiza ao vivo para todo mundo."
+    : "O anfitriao escolhe o visual da sala. Voce ja acompanha as trocas ao vivo aqui.";
+
+  CARD_THEME_PRESETS.forEach((theme) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "theme-option";
+    button.disabled = !isHost;
+
+    if (appearance.cardThemeId === theme.id) {
+      button.classList.add("is-selected");
+    }
+
+    const preview = document.createElement("div");
+    preview.className = "theme-option__preview";
+    applyStyleVariables(preview, theme.style);
+
+    const card = createFrontCard({
+      compact: true,
+      categoryText: "Tema",
+      titleText: theme.previewTitle,
+      questionText: theme.previewQuestion
+    });
+    preview.append(createCardStack(card, true));
+
+    const meta = document.createElement("div");
+    meta.className = "theme-option__meta";
+    meta.append(createTextElement("strong", theme.name));
+    meta.append(createTextElement("p", theme.description));
+
+    const badge = createTextElement(
+      "span",
+      appearance.cardThemeId === theme.id ? "Selecionado" : "Aplicar",
+      "theme-option__badge"
+    );
+
+    button.append(preview, meta, badge);
+    button.addEventListener("click", () => {
+      handleAppearanceChange({ cardThemeId: theme.id });
+    });
+    elements.cardThemeGrid.append(button);
+  });
+
+  BACKGROUND_PRESETS.forEach((background) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "background-option";
+    button.disabled = !isHost;
+
+    if (appearance.backgroundId === background.id) {
+      button.classList.add("is-selected");
+    }
+
+    const preview = document.createElement("div");
+    preview.className = "background-option__preview";
+    preview.style.background = background.style["--room-shell-bg"];
+
+    const previewPanel = document.createElement("div");
+    previewPanel.className = "background-option__panel";
+    previewPanel.style.background = background.style["--room-panel-bg"];
+    previewPanel.style.borderColor = background.style["--room-panel-border"];
+
+    const previewChip = document.createElement("span");
+    previewChip.className = "background-option__chip";
+    previewChip.style.background = background.style["--room-table-bg"];
+
+    previewPanel.append(previewChip);
+    preview.append(previewPanel);
+
+    const meta = document.createElement("div");
+    meta.className = "background-option__meta";
+    meta.append(createTextElement("strong", background.name));
+    meta.append(createTextElement("p", background.description));
+
+    const badge = createTextElement(
+      "span",
+      appearance.backgroundId === background.id ? "Selecionado" : "Aplicar",
+      "theme-option__badge"
+    );
+
+    button.append(preview, meta, badge);
+    button.addEventListener("click", () => {
+      handleAppearanceChange({ backgroundId: background.id });
+    });
+    elements.backgroundGrid.append(button);
+  });
+}
+
+async function handleAppearanceChange(partialAppearance) {
+  if (!state.room) {
+    return;
+  }
+
+  if (!state.room.isHost) {
+    showToast("Apenas o anfitriao pode trocar o tema da sala.");
+    return;
+  }
+
+  try {
+    const currentAppearance = getRoomAppearance(state.room);
+    const payload = await api(`/api/rooms/${state.room.roomCode}/appearance`, {
+      method: "POST",
+      body: {
+        playerId: state.room.viewerId,
+        cardThemeId: partialAppearance.cardThemeId || currentAppearance.cardThemeId,
+        backgroundId: partialAppearance.backgroundId || currentAppearance.backgroundId
+      }
+    });
+
+    if (payload.state) {
+      applyRoom(payload.state);
+    }
+
+    showToast("Visual da sala atualizado.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 async function handleSaveDeck() {
   if (!state.room) {
     return;
@@ -1768,6 +2172,7 @@ function bindEvents() {
   elements.tabStart.addEventListener("click", () => handleTabChange("start"));
   elements.tabTable.addEventListener("click", () => handleTabChange("table"));
   elements.tabCards.addEventListener("click", () => handleTabChange("cards"));
+  elements.tabThemes.addEventListener("click", () => handleTabChange("themes"));
   elements.startGameButton.addEventListener("click", () => handleGameAction("start"));
   elements.nextCardButton.addEventListener("click", () => handleGameAction("next"));
   elements.resetGameButton.addEventListener("click", () => handleGameAction("reset"));

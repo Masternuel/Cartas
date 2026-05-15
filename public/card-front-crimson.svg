@@ -1,0 +1,36 @@
+<svg width="768" height="1152" viewBox="0 0 768 1152" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="paper" x1="44" y1="40" x2="724" y2="1112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF8F2" />
+      <stop offset="1" stop-color="#F6E7DD" />
+    </linearGradient>
+    <linearGradient id="ruby" x1="92" y1="84" x2="676" y2="1068" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C04A57" />
+      <stop offset="1" stop-color="#8F2D37" />
+    </linearGradient>
+  </defs>
+
+  <rect x="12" y="12" width="744" height="1128" rx="56" fill="url(#paper)" />
+  <rect x="24" y="24" width="720" height="1104" rx="52" stroke="#F3DCD1" stroke-width="2" />
+  <rect x="68" y="82" width="632" height="988" rx="38" stroke="url(#ruby)" stroke-width="2.8" />
+
+  <path d="M112 124C112 102.013 129.013 85 151 85H217" stroke="url(#ruby)" stroke-width="3.2" stroke-linecap="round" />
+  <path d="M656 124C656 102.013 638.987 85 617 85H551" stroke="url(#ruby)" stroke-width="3.2" stroke-linecap="round" />
+  <path d="M112 1028C112 1049.99 129.013 1067 151 1067H217" stroke="url(#ruby)" stroke-width="3.2" stroke-linecap="round" />
+  <path d="M656 1028C656 1049.99 638.987 1067 617 1067H551" stroke="url(#ruby)" stroke-width="3.2" stroke-linecap="round" />
+
+  <path d="M384 118L396 138L418 144L396 150L384 170L372 150L350 144L372 138L384 118Z" fill="#A33B46" />
+  <path d="M352 158H416" stroke="#BC4754" stroke-width="2" stroke-linecap="round" />
+  <path d="M88 182V970" stroke="#C56A72" stroke-width="2" />
+  <path d="M680 182V970" stroke="#C56A72" stroke-width="2" />
+
+  <circle cx="102" cy="578" r="6" fill="#A33B46" />
+  <circle cx="666" cy="578" r="6" fill="#A33B46" />
+  <circle cx="102" cy="734" r="4" fill="#C56A72" />
+  <circle cx="666" cy="734" r="4" fill="#C56A72" />
+
+  <path d="M384 888C402.225 858.048 446.706 849.157 470.5 881C483.783 898.776 479.403 924.054 457.773 944.211C437.623 962.989 409.469 978.032 384 995C358.531 978.032 330.377 962.989 310.227 944.211C288.597 924.054 284.217 898.776 297.5 881C321.294 849.157 365.775 858.048 384 888Z" stroke="#A33B46" stroke-width="3" />
+  <path d="M320 1032H358" stroke="#BC4754" stroke-width="2" stroke-linecap="round" />
+  <path d="M410 1032H448" stroke="#BC4754" stroke-width="2" stroke-linecap="round" />
+  <circle cx="384" cy="1032" r="3.5" fill="#A33B46" />
+</svg>
