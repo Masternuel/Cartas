@@ -3173,6 +3173,12 @@ function bindEvents() {
   elements.joinRoomForm.addEventListener("submit", handleJoinRoom);
   elements.cardForm.addEventListener("submit", handleCardSubmit);
   elements.chatForm.addEventListener("submit", handleChatSubmit);
+  elements.chatInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      elements.chatForm.requestSubmit();
+    }
+  });
   elements.tableChatToggle?.addEventListener("click", () => {
     setTableChatOpen(!state.tableChatOpen);
   });
