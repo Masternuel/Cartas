@@ -1,5 +1,6 @@
 const SESSION_KEY = "carta-viva-session";
 const LOCAL_DECKS_KEY = "carta-viva-local-decks";
+const LOCAL_CARD_THEME_KEY = "carta-viva-local-card-theme";
 const AUDIO_VOLUME_KEY = "carta-viva-audio-volume";
 const DEFAULT_AUDIO_VOLUME = 0.05;
 const FINAL_SCREEN_IMAGES = [
@@ -228,7 +229,8 @@ const state = {
   animationTimer: null,
   animationResetTimer: null,
   audioPrimed: false,
-  audioVolume: DEFAULT_AUDIO_VOLUME
+  audioVolume: DEFAULT_AUDIO_VOLUME,
+  localCardThemeId: DEFAULT_ROOM_APPEARANCE.cardThemeId
 };
 
 const elements = {
@@ -273,6 +275,9 @@ const elements = {
   cardColor: document.getElementById("card-color"),
   deckNameInput: document.getElementById("deck-name"),
   saveDeckButton: document.getElementById("save-deck-btn"),
+  exportDeckButton: document.getElementById("export-deck-btn"),
+  importDeckButton: document.getElementById("import-deck-btn"),
+  importDeckFile: document.getElementById("import-deck-file"),
   cancelEditButton: document.getElementById("cancel-edit-btn"),
   saveCardButton: document.getElementById("save-card-btn"),
   boardTitle: document.getElementById("board-title"),
@@ -485,6 +490,20 @@ function loadStoredAudioVolume() {
   return DEFAULT_AUDIO_VOLUME;
 }
 
+function loadStoredCardThemeId() {
+  try {
+    const storedThemeId = window.localStorage.getItem(LOCAL_CARD_THEME_KEY);
+
+    if (storedThemeId && CARD_THEME_MAP.has(storedThemeId)) {
+      return storedThemeId;
+    }
+  } catch (error) {
+    return DEFAULT_ROOM_APPEARANCE.cardThemeId;
+  }
+
+  return DEFAULT_ROOM_APPEARANCE.cardThemeId;
+}
+
 function getManagedAudioElements() {
   return [
     elements.shuffleAudio,
@@ -539,6 +558,10 @@ function initializeAudioPreferences() {
   applyAudioVolume();
 }
 
+function initializeThemePreferences() {
+  state.localCardThemeId = loadStoredCardThemeId();
+}
+
 function getCardThemePreset(themeId) {
   return CARD_THEME_MAP.get(themeId) || CARD_THEME_MAP.get(DEFAULT_ROOM_APPEARANCE.cardThemeId);
 }
@@ -549,7 +572,7 @@ function getBackgroundPreset(backgroundId) {
 
 function getRoomAppearance(room) {
   return {
-    cardThemeId: room?.appearance?.cardThemeId || DEFAULT_ROOM_APPEARANCE.cardThemeId,
+    cardThemeId: state.localCardThemeId || DEFAULT_ROOM_APPEARANCE.cardThemeId,
     backgroundId: room?.appearance?.backgroundId || DEFAULT_ROOM_APPEARANCE.backgroundId
   };
 }
@@ -572,6 +595,16 @@ function applyRoomAppearance(room) {
   applyStyleVariables(elements.pageShell, mergedVariables);
   elements.pageShell.dataset.cardTheme = cardTheme.id;
   elements.pageShell.dataset.backgroundTheme = backgroundTheme.id;
+}
+
+function setLocalCardTheme(themeId) {
+  const nextThemeId = CARD_THEME_MAP.has(themeId)
+    ? themeId
+    : DEFAULT_ROOM_APPEARANCE.cardThemeId;
+
+  state.localCardThemeId = nextThemeId;
+  window.localStorage.setItem(LOCAL_CARD_THEME_KEY, nextThemeId);
+  render();
 }
 
 function normalizeSingleLine(value, maxLength, fallback = "") {
@@ -662,6 +695,119 @@ function persistLocalDeckLibrary(decks) {
   }));
 
   window.localStorage.setItem(LOCAL_DECKS_KEY, JSON.stringify(serializableDecks));
+}
+
+function upsertLocalDeckLibrary(name, cards) {
+  const normalizedName = normalizeSingleLine(name, 40, "Deck sem nome");
+  const mappedCards = mapCardsForLocalDeck(cards);
+
+  if (!mappedCards.length) {
+    throw new Error("Esse deck nao tem perguntas validas para salvar.");
+  }
+
+  const now = Date.now();
+  const existingDeck = state.savedDecks.find(
+    (deck) => deck.name.toLowerCase() === normalizedName.toLowerCase()
+  );
+
+  let savedDeck;
+
+  if (existingDeck) {
+    existingDeck.name = normalizedName;
+    existingDeck.cards = mappedCards;
+    existingDeck.cardCount = mappedCards.length;
+    existingDeck.previewQuestion = mappedCards[0]?.question || "";
+    existingDeck.updatedAt = now;
+    savedDeck = existingDeck;
+  } else {
+    savedDeck = {
+      id: createLocalDeckId(),
+      name: normalizedName,
+      cards: mappedCards,
+      cardCount: mappedCards.length,
+      previewQuestion: mappedCards[0]?.question || "",
+      createdAt: now,
+      updatedAt: now
+    };
+    state.savedDecks.unshift(savedDeck);
+  }
+
+  state.savedDecks.sort((left, right) => right.updatedAt - left.updatedAt);
+  persistLocalDeckLibrary(state.savedDecks);
+  return savedDeck;
+}
+
+function createDeckExportPayload(name, cards, source = "room") {
+  const normalizedName = normalizeSingleLine(name, 40, "Deck sem nome");
+  const mappedCards = mapCardsForLocalDeck(cards);
+
+  if (!mappedCards.length) {
+    throw new Error("Esse deck nao tem perguntas validas para exportar.");
+  }
+
+  return {
+    type: "carta-viva-deck",
+    version: 1,
+    name: normalizedName,
+    source,
+    exportedAt: new Date().toISOString(),
+    cards: mappedCards
+  };
+}
+
+function createDeckFilename(name) {
+  const normalizedName = normalizeSingleLine(name, 40, "deck-carta-viva");
+  const slug = normalizedName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+
+  return `${slug || "deck-carta-viva"}.json`;
+}
+
+function downloadDeckJson(name, cards, source = "room") {
+  const payload = createDeckExportPayload(name, cards, source);
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = createDeckFilename(payload.name);
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+function parseImportedDeckPayload(rawContent, fallbackName) {
+  let parsed;
+
+  try {
+    parsed = JSON.parse(rawContent);
+  } catch (error) {
+    throw new Error("Nao foi possivel ler esse JSON.");
+  }
+
+  const candidate = Array.isArray(parsed)
+    ? {
+        name: fallbackName,
+        cards: parsed
+      }
+    : parsed;
+
+  const cards = mapCardsForLocalDeck(Array.isArray(candidate?.cards) ? candidate.cards : []);
+
+  if (!cards.length) {
+    throw new Error("Esse arquivo nao tem cartas validas para importar.");
+  }
+
+  return {
+    name: normalizeSingleLine(candidate?.name, 40, fallbackName || "Deck importado"),
+    cards
+  };
 }
 
 async function api(path, options = {}) {
@@ -841,6 +987,12 @@ function connectEvents(roomCode, playerId) {
     const data = JSON.parse(event.data);
     showToast(data.message || "A sala foi encerrada.");
     disconnectFromRoom(false);
+  });
+
+  source.addEventListener("kicked", (event) => {
+    const data = JSON.parse(event.data);
+    disconnectFromRoom(false);
+    showToast(data.message || "Voce foi removido da sala.");
   });
 
   source.onerror = () => {
@@ -1115,6 +1267,34 @@ async function handleReadyToggle() {
   }
 }
 
+async function handleKickPlayer(targetPlayer) {
+  if (!state.room || !state.room.isHost || !targetPlayer || targetPlayer.id === state.room.viewerId) {
+    return;
+  }
+
+  const confirmed = window.confirm(`Remover ${targetPlayer.name} da sala?`);
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const payload = await api(`/api/rooms/${state.room.roomCode}/players/${targetPlayer.id}/kick`, {
+      method: "POST",
+      body: {
+        playerId: state.room.viewerId
+      }
+    });
+
+    if (payload?.state) {
+      applyRoom(payload.state);
+    }
+
+    showToast(`${targetPlayer.name} foi removido da sala.`);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 function createTableCardPanel(label, cardElement, hint, variant = "") {
   const panel = document.createElement("div");
   panel.className = "table-card-panel";
@@ -1253,7 +1433,20 @@ function renderPlayers(room) {
       labels.append(createTextElement("span", "Anfitriao", "host-badge"));
     }
 
-    row.append(labels);
+    const actions = document.createElement("div");
+    actions.className = "player-pill__actions";
+    actions.append(labels);
+
+    if (room.isHost && player.id !== room.viewerId) {
+      const kickButton = createTextElement("button", "Kikar", "mini-btn mini-btn--danger");
+      kickButton.type = "button";
+      kickButton.addEventListener("click", () => {
+        handleKickPlayer(player);
+      });
+      actions.append(kickButton);
+    }
+
+    row.append(actions);
 
     elements.playersList.append(row);
 
@@ -1293,7 +1486,20 @@ function renderPlayers(room) {
       drawerLabels.append(createTextElement("span", "Anfitriao", "host-badge"));
     }
 
-    drawerRow.append(drawerMeta, drawerLabels);
+    const drawerActions = document.createElement("div");
+    drawerActions.className = "player-pill__actions";
+    drawerActions.append(drawerLabels);
+
+    if (room.isHost && player.id !== room.viewerId) {
+      const drawerKickButton = createTextElement("button", "Kikar", "mini-btn mini-btn--danger");
+      drawerKickButton.type = "button";
+      drawerKickButton.addEventListener("click", () => {
+        handleKickPlayer(player);
+      });
+      drawerActions.append(drawerKickButton);
+    }
+
+    drawerRow.append(drawerMeta, drawerActions);
     elements.drawerPlayersList.append(drawerRow);
   });
 }
@@ -1566,6 +1772,17 @@ function renderSavedDecks(room) {
 
     const canManage = room.isHost && room.phase === "lobby";
 
+    const exportButton = createTextElement("button", "Exportar", "mini-btn");
+    exportButton.type = "button";
+    exportButton.addEventListener("click", () => {
+      try {
+        downloadDeckJson(deck.name, deck.cards || [], "browser-library");
+        showToast(`Deck ${deck.name} exportado em JSON.`);
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+
     const loadButton = createTextElement("button", "Carregar", "mini-btn");
     loadButton.type = "button";
     loadButton.disabled = !canManage;
@@ -1698,6 +1915,9 @@ function render() {
   const canSaveDeck = room.isHost && deckEditable && room.cards.length > 0;
   elements.saveDeckButton.disabled = !canSaveDeck;
   elements.deckNameInput.disabled = !canSaveDeck;
+  elements.exportDeckButton.disabled = room.cards.length === 0;
+  elements.importDeckButton.disabled = !room.isHost || !deckEditable;
+  elements.importDeckFile.disabled = !room.isHost || !deckEditable;
 
   if (!deckEditable) {
     elements.editorTitle.textContent = "Baralho bloqueado durante a rodada";
@@ -1898,7 +2118,7 @@ function renderSavedDecks(room) {
       showToast(`Deck ${deck.name} removido do navegador.`);
     });
 
-    actions.append(loadButton, deleteButton);
+    actions.append(exportButton, loadButton, deleteButton);
     card.append(actions);
     elements.savedDecksList.append(card);
   });
@@ -1907,20 +2127,20 @@ function renderSavedDecks(room) {
 function renderThemeStudio(room) {
   const appearance = getRoomAppearance(room);
   const isHost = Boolean(room.isHost);
+  const selectedCardThemeId = state.localCardThemeId || DEFAULT_ROOM_APPEARANCE.cardThemeId;
   elements.cardThemeGrid.replaceChildren();
   elements.backgroundGrid.replaceChildren();
 
   elements.themesCopy.textContent = isHost
-    ? "Escolha um tema para as cartas e um background para a sala inteira. O visual atualiza ao vivo para todo mundo."
-    : "O anfitriao escolhe o visual da sala. Voce ja acompanha as trocas ao vivo aqui.";
+    ? "Cada player pode escolher o proprio tema das cartas no navegador. O background da sala continua compartilhado e voce controla isso como anfitriao."
+    : "Escolha seu tema local de cartas aqui. O background geral da sala continua sendo definido pelo anfitriao.";
 
   CARD_THEME_PRESETS.forEach((theme) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "theme-option";
-    button.disabled = !isHost;
 
-    if (appearance.cardThemeId === theme.id) {
+    if (selectedCardThemeId === theme.id) {
       button.classList.add("is-selected");
     }
 
@@ -1943,13 +2163,13 @@ function renderThemeStudio(room) {
 
     const badge = createTextElement(
       "span",
-      appearance.cardThemeId === theme.id ? "Selecionado" : "Aplicar",
+      selectedCardThemeId === theme.id ? "Seu tema" : "Usar neste navegador",
       "theme-option__badge"
     );
 
     button.append(preview, meta, badge);
     button.addEventListener("click", () => {
-      handleAppearanceChange({ cardThemeId: theme.id });
+      setLocalCardTheme(theme.id);
     });
     elements.cardThemeGrid.append(button);
   });
@@ -1987,7 +2207,7 @@ function renderThemeStudio(room) {
 
     const badge = createTextElement(
       "span",
-      appearance.backgroundId === background.id ? "Selecionado" : "Aplicar",
+      appearance.backgroundId === background.id ? "Ativo na sala" : "Aplicar na sala",
       "theme-option__badge"
     );
 
@@ -2045,45 +2265,77 @@ async function handleSaveDeck() {
       40,
       `Deck ${state.room.roomCode}`
     );
-    const cards = mapCardsForLocalDeck(state.room.cards);
-
-    if (!cards.length) {
-      throw new Error("Esse deck nao tem perguntas validas para salvar.");
-    }
-
-    const now = Date.now();
-    const existingDeck = state.savedDecks.find(
-      (deck) => deck.name.toLowerCase() === name.toLowerCase()
-    );
-    let savedDeck;
-
-    if (existingDeck) {
-      existingDeck.name = name;
-      existingDeck.cards = cards;
-      existingDeck.cardCount = cards.length;
-      existingDeck.previewQuestion = cards[0]?.question || "";
-      existingDeck.updatedAt = now;
-      savedDeck = existingDeck;
-    } else {
-      savedDeck = {
-        id: createLocalDeckId(),
-        name,
-        cards,
-        cardCount: cards.length,
-        previewQuestion: cards[0]?.question || "",
-        createdAt: now,
-        updatedAt: now
-      };
-      state.savedDecks.unshift(savedDeck);
-    }
-
-    state.savedDecks.sort((left, right) => right.updatedAt - left.updatedAt);
-    persistLocalDeckLibrary(state.savedDecks);
+    const savedDeck = upsertLocalDeckLibrary(name, state.room.cards);
     renderSavedDecks(state.room);
     elements.deckNameInput.value = savedDeck.name;
     showToast(`Deck ${savedDeck.name} salvo neste navegador.`);
   } catch (error) {
     showToast(error.message);
+  }
+}
+
+function handleExportCurrentDeck() {
+  if (!state.room) {
+    return;
+  }
+
+  try {
+    const deckName = normalizeSingleLine(
+      elements.deckNameInput.value,
+      40,
+      `Deck ${state.room.roomCode}`
+    );
+    downloadDeckJson(deckName, state.room.cards, "room");
+    showToast(`Deck ${deckName} exportado em JSON.`);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function handleImportDeckFile(file) {
+  if (!state.room) {
+    return;
+  }
+
+  if (!state.room.isHost || state.room.phase !== "lobby") {
+    showToast("Somente o anfitriao pode importar um deck no lobby.");
+    return;
+  }
+
+  if (!file) {
+    return;
+  }
+
+  try {
+    const fallbackName = normalizeSingleLine(file.name.replace(/\.[^.]+$/, ""), 40, "Deck importado");
+    const importedDeck = parseImportedDeckPayload(await file.text(), fallbackName);
+
+    const payload = await api(`/api/rooms/${state.room.roomCode}/decks/import`, {
+      method: "POST",
+      body: {
+        playerId: state.room.viewerId,
+        name: importedDeck.name,
+        cards: importedDeck.cards
+      }
+    });
+
+    const savedDeck = upsertLocalDeckLibrary(importedDeck.name, importedDeck.cards);
+
+    if (payload.state) {
+      applyRoom(payload.state);
+    }
+
+    elements.deckNameInput.value = savedDeck.name;
+
+    if (state.room) {
+      renderSavedDecks(state.room);
+    }
+
+    showToast(`Deck ${savedDeck.name} importado e salvo neste navegador.`);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    elements.importDeckFile.value = "";
   }
 }
 
@@ -2162,6 +2414,14 @@ function bindEvents() {
   elements.joinRoomForm.addEventListener("submit", handleJoinRoom);
   elements.cardForm.addEventListener("submit", handleCardSubmit);
   elements.saveDeckButton.addEventListener("click", handleSaveDeck);
+  elements.exportDeckButton.addEventListener("click", handleExportCurrentDeck);
+  elements.importDeckButton.addEventListener("click", () => {
+    elements.importDeckFile.click();
+  });
+  elements.importDeckFile.addEventListener("change", (event) => {
+    const [file] = event.currentTarget.files || [];
+    handleImportDeckFile(file);
+  });
   elements.audioVolume.addEventListener("input", (event) => {
     setAudioVolume(Number(event.currentTarget.value) / 100);
   });
@@ -2214,6 +2474,7 @@ function bindEvents() {
 }
 
 initializeAudioPreferences();
+initializeThemePreferences();
 hydrateInviteCodeFromUrl();
 bindEvents();
 attemptReconnect();

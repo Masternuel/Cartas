@@ -296,8 +296,8 @@
 
                   <input id="card-color" name="color" type="hidden" value="#c79d51" />
                   <p class="card-style-note">
-                    O texto da carta usa o tema escolhido na aba de tema e fundo,
-                    com frente e verso sincronizados para a sala inteira.
+                    O texto da carta segue o tema que voce escolher na aba de tema e fundo,
+                    enquanto o background da sala continua compartilhado com todo mundo.
                   </p>
                 </fieldset>
 
@@ -333,6 +333,22 @@
                 <button id="save-deck-btn" type="button" class="secondary-btn">
                   Salvar deck atual
                 </button>
+
+                <div class="deck-transfer-actions">
+                  <button id="export-deck-btn" type="button" class="ghost-btn">
+                    Exportar deck atual
+                  </button>
+                  <button id="import-deck-btn" type="button" class="ghost-btn">
+                    Importar JSON
+                  </button>
+                </div>
+
+                <input
+                  id="import-deck-file"
+                  type="file"
+                  accept=".json,application/json"
+                  class="hidden"
+                />
               </section>
             </section>
 
@@ -388,7 +404,7 @@
                 </div>
 
                 <p class="themes-panel__copy">
-                  Frente, verso e detalhes do baralho acompanham o tema escolhido.
+                  Cada jogador pode escolher no proprio navegador a frente, o verso e os detalhes do seu baralho.
                 </p>
 
                 <div id="card-theme-grid" class="theme-choice-grid"></div>
@@ -403,7 +419,7 @@
                 </div>
 
                 <p class="themes-panel__copy">
-                  O fundo muda o clima do lobby, da mesa e da aba de edicao.
+                  O fundo muda o clima do lobby, da mesa e da aba de edicao para toda a sala.
                 </p>
 
                 <div id="background-grid" class="background-choice-grid"></div>

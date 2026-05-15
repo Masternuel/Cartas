@@ -344,6 +344,49 @@ function closeRoom(room, reason = "Sala encerrada.") {
   rooms.delete(room.code);
 }
 
+function disconnectPlayerConnections(room, playerId, eventName, payload) {
+  for (const response of Array.from(room.connections)) {
+    if (response.viewerId !== playerId) {
+      continue;
+    }
+
+    try {
+      writeEvent(response, eventName, payload);
+      response.end();
+    } catch (error) {
+      response.destroy();
+    }
+
+    room.connections.delete(response);
+  }
+}
+
+function removePlayerFromRoom(room, playerId) {
+  const player = getPlayer(room, playerId);
+
+  if (!player) {
+    return null;
+  }
+
+  const removedWasActive = room.activePlayerId === player.id;
+  room.players = room.players.filter((currentPlayer) => currentPlayer.id !== player.id);
+
+  if (!room.players.length) {
+    closeRoom(room, "A sala foi encerrada porque todos sairam.");
+    return player;
+  }
+
+  if (room.hostId === player.id || !getPlayer(room, room.hostId)) {
+    room.hostId = room.players[0].id;
+  }
+
+  if (removedWasActive) {
+    room.activePlayerId = room.phase === "playing" ? room.players[0]?.id || null : null;
+  }
+
+  return player;
+}
+
 function ensureRoomAndPlayer(roomCode, playerId) {
   const room = getRoom(roomCode);
 
@@ -535,30 +578,60 @@ async function handleLeaveRoom(request, response, roomCode) {
 
   try {
     const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
-    const removedWasActive = room.activePlayerId === player.id;
-    room.players = room.players.filter((currentPlayer) => currentPlayer.id !== player.id);
+    const removedPlayer = removePlayerFromRoom(room, player.id);
 
-    if (!room.players.length) {
-      closeRoom(room, "A sala foi encerrada porque todos sairam.");
+    if (!removedPlayer || !rooms.has(room.code)) {
       sendJson(response, 200, { ok: true });
       return;
-    }
-
-    if (room.hostId === player.id) {
-      room.hostId = room.players[0].id;
-    }
-
-    if (!getPlayer(room, room.hostId)) {
-      room.hostId = room.players[0].id;
-    }
-
-    if (removedWasActive) {
-      room.activePlayerId = room.phase === "playing" ? room.players[0].id : null;
     }
 
     touchRoom(room);
     broadcastRoom(room);
     sendJson(response, 200, { ok: true });
+  } catch (error) {
+    sendError(response, error.statusCode || 400, error.message);
+  }
+}
+
+async function handleKickPlayer(request, response, roomCode, targetPlayerId) {
+  const payload = await collectJson(request);
+
+  try {
+    const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
+    assertHost(room, player.id);
+
+    if (targetPlayerId === player.id) {
+      throw Object.assign(new Error("O anfitriao nao pode se expulsar da propria sala."), {
+        statusCode: 409
+      });
+    }
+
+    const targetPlayer = getPlayer(room, targetPlayerId);
+
+    if (!targetPlayer) {
+      throw Object.assign(new Error("Jogador nao encontrado nessa sala."), {
+        statusCode: 404
+      });
+    }
+
+    disconnectPlayerConnections(room, targetPlayer.id, "kicked", {
+      message: "Voce foi removido da sala pelo anfitriao."
+    });
+
+    removePlayerFromRoom(room, targetPlayer.id);
+
+    if (!rooms.has(room.code)) {
+      sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    touchRoom(room);
+    broadcastRoom(room);
+
+    sendJson(response, 200, {
+      ok: true,
+      state: serializeRoom(room, player.id)
+    });
   } catch (error) {
     sendError(response, error.statusCode || 400, error.message);
   }
@@ -1001,6 +1074,11 @@ async function handleApi(request, response, pathname, url) {
 
   if (request.method === "POST" && segments[3] === "appearance") {
     await handleUpdateAppearance(request, response, roomCode);
+    return true;
+  }
+
+  if (request.method === "POST" && segments[3] === "players" && segments[4] && segments[5] === "kick") {
+    await handleKickPlayer(request, response, roomCode, segments[4]);
     return true;
   }
 

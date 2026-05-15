@@ -787,6 +787,14 @@ fieldset {
   gap: 0.45rem;
 }
 
+.player-pill__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.55rem;
+}
+
 .board-topline,
 .section-heading,
 .board-actions,
@@ -1731,6 +1739,16 @@ fieldset {
   font-size: 0.85rem;
 }
 
+.mini-btn--danger {
+  background: rgba(251, 113, 133, 0.14);
+  border: 1px solid rgba(251, 113, 133, 0.24);
+  color: #ffd4db;
+}
+
+.mini-btn--danger:hover {
+  background: rgba(251, 113, 133, 0.22);
+}
+
 .card-form {
   display: grid;
   gap: 1rem;
@@ -1746,6 +1764,12 @@ fieldset {
 .deck-save-box {
   display: grid;
   gap: 1rem;
+}
+
+.deck-transfer-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
 }
 
 .saved-decks-list {
@@ -2028,6 +2052,10 @@ fieldset {
   .saved-deck-card__actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .deck-transfer-actions {
+    grid-template-columns: 1fr;
   }
 
   .saved-deck-card__actions .mini-btn {
