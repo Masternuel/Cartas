@@ -294,6 +294,7 @@ const elements = {
   settingsTimerSeconds: document.getElementById("settings-timer-seconds"),
   settingsSummary: document.getElementById("settings-summary"),
   roundSettingsSummary: document.getElementById("round-settings-summary"),
+  startSummaryButton: document.getElementById("start-summary-btn"),
   chatList: document.getElementById("chat-list"),
   chatForm: document.getElementById("chat-form"),
   chatInput: document.getElementById("chat-input"),
@@ -2411,7 +2412,7 @@ function renderBoardCopy(room) {
   if (room.phase === "lobby") {
     elements.boardTitle.textContent = "Prepare a mesa e distribua os jogadores";
     elements.boardSubtitle.textContent =
-      `Edite cartas, escolha o tema e deixe todos marcarem pronto. ${settingsSummary} Quando a sala inteira confirmar, a rodada comeca automaticamente.`;
+      `${settingsSummary} Monte o baralho pelo menu, deixe todos marcarem pronto e inicie a rodada quando quiser. Quando a sala inteira confirmar, a rodada comeca automaticamente.`;
     return;
   }
 
@@ -2496,6 +2497,23 @@ function render() {
   elements.settingsCardsPerRound.disabled = !room.isHost || !deckEditable;
   elements.settingsTimerSeconds.disabled = !room.isHost || !deckEditable;
   elements.chatInput.disabled = false;
+
+  if (elements.startSummaryButton) {
+    if (room.phase === "lobby") {
+      elements.startSummaryButton.textContent = room.isHost
+        ? "Iniciar jogo"
+        : "Aguardando anfitriao";
+      elements.startSummaryButton.disabled = !room.isHost || room.stats.totalCards === 0;
+    } else if (room.phase === "playing") {
+      elements.startSummaryButton.textContent = "Abrir mesa";
+      elements.startSummaryButton.disabled = false;
+    } else {
+      elements.startSummaryButton.textContent = room.isHost
+        ? "Reiniciar rodada"
+        : "Ver resultado";
+      elements.startSummaryButton.disabled = !room.isHost;
+    }
+  }
 
   if (!deckEditable) {
     elements.editorTitle.textContent = "Baralho bloqueado durante a rodada";
@@ -3037,6 +3055,25 @@ function bindEvents() {
   elements.startGameButton.addEventListener("click", () => handleGameAction("start"));
   elements.nextCardButton.addEventListener("click", () => handleGameAction("next"));
   elements.resetGameButton.addEventListener("click", () => handleGameAction("reset"));
+  elements.startSummaryButton?.addEventListener("click", () => {
+    if (!state.room) {
+      return;
+    }
+
+    if (state.room.phase === "lobby") {
+      handleGameAction("start");
+      return;
+    }
+
+    if (state.room.phase === "playing") {
+      handleTabChange("table");
+      return;
+    }
+
+    if (state.room.phase === "finished" && state.room.isHost) {
+      handleGameAction("reset");
+    }
+  });
 
   document.querySelectorAll("[data-open-tab]").forEach((button) => {
     button.addEventListener("click", () => {

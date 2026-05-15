@@ -244,31 +244,6 @@
             </section>
 
             <section class="room-drawer__section">
-              <div class="room-drawer__section-head">
-                <div>
-                  <p class="card-kicker">Chat</p>
-                  <h3>Conversa da sala</h3>
-                </div>
-              </div>
-
-              <div id="chat-list" class="chat-list"></div>
-
-              <form id="chat-form" class="chat-form">
-                <label class="field">
-                  <span>Mensagem</span>
-                  <textarea
-                    id="chat-input"
-                    rows="3"
-                    maxlength="220"
-                    placeholder="Escreva algo para todo mundo..."
-                    required
-                  ></textarea>
-                </label>
-                <button type="submit" class="secondary-btn">Enviar mensagem</button>
-              </form>
-            </section>
-
-            <section class="room-drawer__section">
               <p class="card-kicker">Som</p>
               <div class="drawer-audio-box">
                 <div class="drawer-audio-box__head">
@@ -316,7 +291,7 @@
                 <p class="eyebrow">Carta Viva</p>
                 <h2>Sala <span id="room-code">-----</span></h2>
                 <p id="board-subtitle" class="board-subtitle">
-                  Personalize as cartas no lobby e use o anfitriao para controlar a rodada.
+                  Monte o baralho pelo menu, deixe todos marcarem pronto e inicie a rodada.
                 </p>
               </div>
 
@@ -359,11 +334,36 @@
                   Partida com todas as cartas do baralho e sem timer ativo.
                 </p>
 
-                <div class="start-shortcuts">
-                  <button class="ghost-btn" type="button" data-open-tab="table">Abrir mesa</button>
-                  <button class="ghost-btn" type="button" data-open-tab="cards">Editar cartas</button>
-                  <button class="ghost-btn" type="button" data-open-tab="themes">Tema e fundo</button>
+                <div class="start-primary-action">
+                  <button id="start-summary-btn" class="primary-btn" type="button">
+                    Iniciar jogo
+                  </button>
                 </div>
+              </section>
+
+              <section class="panel start-panel start-panel--chat">
+                <div class="section-heading">
+                  <div>
+                    <p class="card-kicker">Chat</p>
+                    <h3>Conversa da sala</h3>
+                  </div>
+                </div>
+
+                <div id="chat-list" class="chat-list"></div>
+
+                <form id="chat-form" class="chat-form">
+                  <label class="field">
+                    <span>Mensagem</span>
+                    <textarea
+                      id="chat-input"
+                      rows="3"
+                      maxlength="220"
+                      placeholder="Escreva algo para todo mundo..."
+                      required
+                    ></textarea>
+                  </label>
+                  <button type="submit" class="secondary-btn">Enviar mensagem</button>
+                </form>
               </section>
             </div>
           </div>

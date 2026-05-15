@@ -102,6 +102,15 @@ select:focus {
   transform: translateY(-1px);
 }
 
+select option {
+  color: #111827;
+  background: #ffffff;
+}
+
+select option:disabled {
+  color: #6b7280;
+}
+
 textarea {
   min-height: 124px;
   resize: vertical;
@@ -445,10 +454,19 @@ fieldset {
 }
 
 .room-menu-toggle span {
-  width: 22px;
-  height: 2px;
+  width: 24px;
+  height: 2.5px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #f6d58d, #ffffff);
+  background: linear-gradient(90deg, #ffe2ad, #ffffff);
+  box-shadow: 0 0 10px rgba(246, 213, 141, 0.16);
+}
+
+.room-menu-toggle span:nth-child(2) {
+  width: 18px;
+}
+
+.room-menu-toggle span:nth-child(3) {
+  width: 14px;
 }
 
 .page-shell.is-menu-open .room-menu-toggle {
@@ -612,6 +630,7 @@ fieldset {
 .start-grid {
   grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
   gap: 20px;
+  align-items: start;
 }
 
 .start-panel,
@@ -620,11 +639,18 @@ fieldset {
   padding: 28px;
 }
 
-.start-shortcuts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.2rem;
+.start-primary-action {
+  margin-top: 1.35rem;
+}
+
+.start-primary-action .primary-btn {
+  min-width: 220px;
+}
+
+.start-panel--chat {
+  grid-column: 2;
+  display: grid;
+  gap: 1rem;
 }
 
 .start-settings-summary {
@@ -2116,6 +2142,10 @@ fieldset {
   .themes-grid,
   .dashboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  .start-panel--chat {
+    grid-column: auto;
   }
 
   .hero-showcase {
