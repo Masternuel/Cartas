@@ -25,6 +25,56 @@
             <span>Salas em tempo real</span>
             <span>Fluxo simples para celular e desktop</span>
           </div>
+
+          <div class="hero-showcase">
+            <div class="hero-preview-stack">
+              <article class="hero-mini-card hero-mini-card--front">
+                <span class="hero-mini-card__kicker">Tema vivo</span>
+                <strong>Cartas especiais</strong>
+                <p>Pule a vez, escolha quem responde e monte partidas com a cara da sua sala.</p>
+              </article>
+              <article class="hero-mini-card hero-mini-card--back" aria-hidden="true"></article>
+            </div>
+
+            <div class="hero-insights">
+              <article class="hero-insight">
+                <strong>Timer e ritmo</strong>
+                <span>Controle a rodada com contagem por carta.</span>
+              </article>
+              <article class="hero-insight">
+                <strong>Chat ao vivo</strong>
+                <span>Converse na sala sem sair da mesa.</span>
+              </article>
+              <article class="hero-insight">
+                <strong>Biblioteca sua</strong>
+                <span>Favoritos, importacao e exportacao em JSON.</span>
+              </article>
+            </div>
+          </div>
+
+          <div class="hero-steps">
+            <article class="hero-step">
+              <span>1</span>
+              <div>
+                <strong>Crie a sala</strong>
+                <p>Escolha o tema, o limite da partida e o timer.</p>
+              </div>
+            </article>
+            <article class="hero-step">
+              <span>2</span>
+              <div>
+                <strong>Monte o baralho</strong>
+                <p>Adicione perguntas, cartas especiais e decks importados.</p>
+              </div>
+            </article>
+            <article class="hero-step">
+              <span>3</span>
+              <div>
+                <strong>Jogue junto</strong>
+                <p>Marquem pronto, conversem no chat e revelem tudo ao vivo.</p>
+              </div>
+            </article>
+          </div>
         </div>
 
         <div class="entry-stack">
@@ -153,6 +203,72 @@
             </section>
 
             <section class="room-drawer__section">
+              <div class="room-drawer__section-head">
+                <div>
+                  <p class="card-kicker">Configuracoes</p>
+                  <h3>Rodada da sala</h3>
+                </div>
+              </div>
+
+              <div class="drawer-settings-grid">
+                <label class="field">
+                  <span>Cartas por partida</span>
+                  <select id="settings-cards-per-round">
+                    <option value="0">Todas as cartas</option>
+                    <option value="4">4 cartas</option>
+                    <option value="6">6 cartas</option>
+                    <option value="8">8 cartas</option>
+                    <option value="10">10 cartas</option>
+                    <option value="12">12 cartas</option>
+                    <option value="16">16 cartas</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>Timer por carta</span>
+                  <select id="settings-timer-seconds">
+                    <option value="0">Sem timer</option>
+                    <option value="15">15 segundos</option>
+                    <option value="30">30 segundos</option>
+                    <option value="45">45 segundos</option>
+                    <option value="60">60 segundos</option>
+                    <option value="90">90 segundos</option>
+                    <option value="120">120 segundos</option>
+                  </select>
+                </label>
+              </div>
+
+              <p id="settings-summary" class="room-drawer__copy">
+                A rodada usa o baralho inteiro e nao tem timer.
+              </p>
+            </section>
+
+            <section class="room-drawer__section">
+              <div class="room-drawer__section-head">
+                <div>
+                  <p class="card-kicker">Chat</p>
+                  <h3>Conversa da sala</h3>
+                </div>
+              </div>
+
+              <div id="chat-list" class="chat-list"></div>
+
+              <form id="chat-form" class="chat-form">
+                <label class="field">
+                  <span>Mensagem</span>
+                  <textarea
+                    id="chat-input"
+                    rows="3"
+                    maxlength="220"
+                    placeholder="Escreva algo para todo mundo..."
+                    required
+                  ></textarea>
+                </label>
+                <button type="submit" class="secondary-btn">Enviar mensagem</button>
+              </form>
+            </section>
+
+            <section class="room-drawer__section">
               <p class="card-kicker">Som</p>
               <div class="drawer-audio-box">
                 <div class="drawer-audio-box__head">
@@ -239,6 +355,10 @@
                   <span>Restantes <strong id="start-remaining-cards-stat">0</strong></span>
                 </div>
 
+                <p id="round-settings-summary" class="start-settings-summary">
+                  Partida com todas as cartas do baralho e sem timer ativo.
+                </p>
+
                 <div class="start-shortcuts">
                   <button class="ghost-btn" type="button" data-open-tab="table">Abrir mesa</button>
                   <button class="ghost-btn" type="button" data-open-tab="cards">Editar cartas</button>
@@ -280,6 +400,15 @@
                       maxlength="24"
                       placeholder="Ex.: Humor"
                     />
+                  </label>
+
+                  <label class="field">
+                    <span>Tipo da carta</span>
+                    <select id="card-kind" name="kind">
+                      <option value="question">Pergunta normal</option>
+                      <option value="skip-turn">Pular sua vez</option>
+                      <option value="choose-player">Escolher quem responde</option>
+                    </select>
                   </label>
 
                   <label class="field">

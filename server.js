@@ -10,14 +10,24 @@ const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : __d
 const SAVED_DECKS_FILE = path.join(DATA_DIR, "saved-decks.json");
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_PLAYERS_PER_ROOM = 12;
+const MAX_CHAT_MESSAGES = 80;
+const MAX_CHAT_LENGTH = 220;
 const DEFAULT_CARD_THEME_ID = "azure-whisper";
 const DEFAULT_BACKGROUND_ID = "midnight-veil";
+const DEFAULT_CARDS_PER_ROUND = 0;
+const DEFAULT_TURN_TIMER_SECONDS = 0;
+const DEFAULT_CARD_KIND = "question";
 const CARD_THEME_IDS = new Set([
   "azure-whisper",
   "crimson-velvet",
   "violet-lock",
   "lunar-neon",
   "obsidian-gold"
+]);
+const CARD_KIND_IDS = new Set([
+  "question",
+  "skip-turn",
+  "choose-player"
 ]);
 const BACKGROUND_IDS = new Set([
   "midnight-veil",
@@ -138,6 +148,7 @@ function makeDefaultCards() {
       category: "Conexao",
       question: "Qual memoria recente te fez sorrir sem perceber?",
       color: "#f97316",
+      kind: "question",
       authorId: "system",
       authorName: "Sistema"
     },
@@ -147,6 +158,7 @@ function makeDefaultCards() {
       category: "Debate",
       question: "O que voce escolheria perder por uma semana: internet ou cafe?",
       color: "#14b8a6",
+      kind: "question",
       authorId: "system",
       authorName: "Sistema"
     },
@@ -156,6 +168,7 @@ function makeDefaultCards() {
       category: "Narrativa",
       question: "Conte uma situacao em que voce precisou improvisar e deu certo.",
       color: "#ec4899",
+      kind: "question",
       authorId: "system",
       authorName: "Sistema"
     },
@@ -165,6 +178,7 @@ function makeDefaultCards() {
       category: "Equipe",
       question: "Quais tres qualidades nao podem faltar em um parceiro de projeto?",
       color: "#8b5cf6",
+      kind: "question",
       authorId: "system",
       authorName: "Sistema"
     }
@@ -209,14 +223,22 @@ function createRoom(hostName) {
   const room = {
     code: generateRoomCode(),
     hostId: host.id,
+    settings: {
+      cardsPerRound: DEFAULT_CARDS_PER_ROUND,
+      timerSeconds: DEFAULT_TURN_TIMER_SECONDS
+    },
     appearance: {
       cardThemeId: DEFAULT_CARD_THEME_ID,
       backgroundId: DEFAULT_BACKGROUND_ID
     },
     activePlayerId: null,
+    responderPlayerId: null,
     phase: "lobby",
     players: [host],
     cards: makeDefaultCards(),
+    roundCardTotal: 0,
+    turnEndsAt: null,
+    chatMessages: [],
     currentCardId: null,
     drawPile: [],
     connections: new Set(),
@@ -226,6 +248,13 @@ function createRoom(hostName) {
   };
 
   rooms.set(room.code, room);
+  room.roundCardTotal = getRoundCardTarget(room);
+  addChatMessage(room, {
+    playerId: "system",
+    playerName: "Sistema",
+    text: `Sala ${room.code} criada. Monte o baralho e espere todo mundo marcar pronto.`,
+    system: true
+  });
   return { room, playerId: host.id };
 }
 
@@ -268,14 +297,78 @@ function playerCanEditCard(room, viewerId, card) {
   return viewerId === room.hostId || viewerId === card.authorId;
 }
 
+function clearRoundTimer(room) {
+  if (room.turnTimerHandle) {
+    clearTimeout(room.turnTimerHandle);
+    room.turnTimerHandle = null;
+  }
+
+  room.turnEndsAt = null;
+}
+
+function scheduleRoundTimer(room) {
+  clearRoundTimer(room);
+
+  const timerSeconds = validateTimerSeconds(room.settings?.timerSeconds, DEFAULT_TURN_TIMER_SECONDS);
+
+  if (room.phase !== "playing" || !room.currentCardId || timerSeconds <= 0) {
+    return;
+  }
+
+  room.turnEndsAt = Date.now() + timerSeconds * 1000;
+  room.turnTimerHandle = setTimeout(() => {
+    room.turnTimerHandle = null;
+
+    if (!rooms.has(room.code) || room.phase !== "playing" || !room.currentCardId) {
+      return;
+    }
+
+    advanceRoom(room);
+    touchRoom(room);
+    broadcastRoom(room);
+  }, timerSeconds * 1000);
+
+  room.turnTimerHandle.unref?.();
+}
+
+function advanceRoom(room) {
+  const currentPullerId = room.activePlayerId;
+  room.currentCardId = room.drawPile.shift() || null;
+
+  if (!room.currentCardId) {
+    room.phase = "finished";
+    room.activePlayerId = null;
+    room.responderPlayerId = null;
+    clearRoundTimer(room);
+    return;
+  }
+
+  if (!room.drawPile.length) {
+    room.activePlayerId = null;
+    room.responderPlayerId = null;
+    scheduleRoundTimer(room);
+    return;
+  }
+
+  room.activePlayerId = getNextPlayerId(room, currentPullerId);
+  room.responderPlayerId = room.activePlayerId;
+  scheduleRoundTimer(room);
+}
+
 function serializeRoom(room, viewerId) {
   const appearance = room.appearance || {};
+  const settings = room.settings || {};
   const currentCard = room.currentCardId
     ? room.cards.find((card) => card.id === room.currentCardId) || null
     : null;
+  const totalCards = room.phase === "lobby"
+    ? getRoundCardTarget(room)
+    : room.roundCardTotal || 0;
   const revealedCount = room.phase === "lobby"
     ? 0
-    : Math.min(room.cards.length, room.cards.length - room.drawPile.length);
+    : Math.min(totalCards, totalCards - room.drawPile.length);
+  const responderId = getCurrentResponderId(room);
+  const responder = responderId ? getPlayer(room, responderId) : null;
 
   return {
     roomCode: room.code,
@@ -287,7 +380,13 @@ function serializeRoom(room, viewerId) {
       cardThemeId: validateCardThemeId(appearance.cardThemeId),
       backgroundId: validateBackgroundId(appearance.backgroundId)
     },
+    settings: {
+      cardsPerRound: validateCardsPerRound(settings.cardsPerRound, DEFAULT_CARDS_PER_ROUND),
+      timerSeconds: validateTimerSeconds(settings.timerSeconds, DEFAULT_TURN_TIMER_SECONDS)
+    },
     activePlayerId: room.activePlayerId,
+    responderPlayerId: responderId,
+    responderName: responder?.name || null,
     version: room.version,
     players: room.players.map((player) => ({
       id: player.id,
@@ -296,9 +395,11 @@ function serializeRoom(room, viewerId) {
       isReady: Boolean(player.isReady)
     })),
     stats: {
-      totalCards: room.cards.length,
-      remainingCards: room.drawPile.length,
-      revealedCards: revealedCount
+      deckCards: room.cards.length,
+      totalCards,
+      remainingCards: room.phase === "lobby" ? totalCards : room.drawPile.length,
+      revealedCards: revealedCount,
+      turnEndsAt: room.turnEndsAt
     },
     cards: room.cards.map((card) => ({
       id: card.id,
@@ -306,11 +407,13 @@ function serializeRoom(room, viewerId) {
       category: card.category,
       question: card.question,
       color: card.color,
+      kind: validateCardKind(card.kind),
       authorName: card.authorName,
       canEdit: playerCanEditCard(room, viewerId, card),
       canDelete: playerCanEditCard(room, viewerId, card)
     })),
     currentCard,
+    chatMessages: (room.chatMessages || []).map(serializeChatMessage),
     updatedAt: room.updatedAt
   };
 }
@@ -331,6 +434,8 @@ function broadcastRoom(room) {
 }
 
 function closeRoom(room, reason = "Sala encerrada.") {
+  clearRoundTimer(room);
+
   for (const response of room.connections) {
     try {
       writeEvent(response, "room-closed", { message: reason });
@@ -384,6 +489,16 @@ function removePlayerFromRoom(room, playerId) {
     room.activePlayerId = room.phase === "playing" ? room.players[0]?.id || null : null;
   }
 
+  if (room.responderPlayerId === player.id || !getPlayer(room, room.responderPlayerId)) {
+    room.responderPlayerId = room.activePlayerId || null;
+  }
+
+  if (room.phase === "lobby") {
+    room.roundCardTotal = getRoundCardTarget(room);
+  }
+
+  scheduleRoundTimer(room);
+
   return player;
 }
 
@@ -420,16 +535,22 @@ function validateCardInput(payload) {
   const category = cleanSingleLine(payload.category, 24, "Pergunta");
   const question = cleanMultiLine(payload.question, 280);
   const color = cleanColor(payload.color);
+  const kind = validateCardKind(payload.kind);
 
   if (!question) {
     throw Object.assign(new Error("Escreva uma pergunta para a carta."), { statusCode: 422 });
   }
 
-  return { title, category, question, color };
+  return { title, category, question, color, kind };
 }
 
 function validateDeckName(value, fallback = "Deck sem nome") {
   return cleanSingleLine(value, 40, fallback);
+}
+
+function validateCardKind(value, fallback = DEFAULT_CARD_KIND) {
+  const kind = cleanSingleLine(value, 24, fallback);
+  return CARD_KIND_IDS.has(kind) ? kind : fallback;
 }
 
 function validateCardThemeId(value, fallback = DEFAULT_CARD_THEME_ID) {
@@ -440,6 +561,30 @@ function validateCardThemeId(value, fallback = DEFAULT_CARD_THEME_ID) {
 function validateBackgroundId(value, fallback = DEFAULT_BACKGROUND_ID) {
   const backgroundId = cleanSingleLine(value, 32, fallback);
   return BACKGROUND_IDS.has(backgroundId) ? backgroundId : fallback;
+}
+
+function validateCardsPerRound(value, fallback = DEFAULT_CARDS_PER_ROUND) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return fallback;
+  }
+
+  return Math.min(50, Math.floor(numericValue));
+}
+
+function validateTimerSeconds(value, fallback = DEFAULT_TURN_TIMER_SECONDS) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return fallback;
+  }
+
+  return Math.min(300, Math.floor(numericValue));
+}
+
+function validateChatText(value) {
+  return cleanMultiLine(value, MAX_CHAT_LENGTH).replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function serializeDeck(deck) {
@@ -458,8 +603,62 @@ function mapCardsForDeck(cards) {
     title: cleanSingleLine(card.title, 36, "Carta sem titulo"),
     category: cleanSingleLine(card.category, 24, "Pergunta"),
     question: cleanMultiLine(card.question, 280),
-    color: cleanColor(card.color)
+    color: cleanColor(card.color),
+    kind: validateCardKind(card.kind)
   }));
+}
+
+function serializeChatMessage(message) {
+  return {
+    id: message.id,
+    playerId: message.playerId,
+    playerName: message.playerName,
+    text: message.text,
+    createdAt: message.createdAt,
+    system: Boolean(message.system)
+  };
+}
+
+function addChatMessage(room, options) {
+  const text = validateChatText(options?.text);
+
+  if (!text) {
+    return null;
+  }
+
+  const message = {
+    id: randomUUID(),
+    playerId: cleanSingleLine(options?.playerId, 64, "system"),
+    playerName: cleanSingleLine(options?.playerName, 24, "Sistema"),
+    text,
+    createdAt: Date.now(),
+    system: Boolean(options?.system)
+  };
+
+  room.chatMessages = [...(room.chatMessages || []), message].slice(-MAX_CHAT_MESSAGES);
+  return message;
+}
+
+function getRoundCardTarget(room) {
+  const requestedCount = validateCardsPerRound(
+    room.settings?.cardsPerRound,
+    DEFAULT_CARDS_PER_ROUND
+  );
+  const totalCards = room.cards.length;
+
+  if (requestedCount === 0) {
+    return totalCards;
+  }
+
+  return Math.min(totalCards, requestedCount);
+}
+
+function getCurrentResponderId(room) {
+  if (!room?.responderPlayerId) {
+    return null;
+  }
+
+  return getPlayer(room, room.responderPlayerId)?.id || null;
 }
 
 function canAutoStartRoom(room) {
@@ -472,15 +671,18 @@ function canAutoStartRoom(room) {
 }
 
 function startRoomRound(room) {
+  room.roundCardTotal = getRoundCardTarget(room);
   room.phase = "playing";
-  room.drawPile = shuffle(room.cards.map((card) => card.id));
+  room.drawPile = shuffle(room.cards.map((card) => card.id)).slice(0, room.roundCardTotal);
   room.currentCardId = room.drawPile.shift() || null;
-  room.activePlayerId = room.drawPile.length > 0
+  room.activePlayerId = room.drawPile.length > 0 || room.currentCardId
     ? room.players[0]?.id || null
     : null;
+  room.responderPlayerId = room.activePlayerId;
   room.players.forEach((currentPlayer) => {
     currentPlayer.isReady = false;
   });
+  scheduleRoundTimer(room);
 }
 
 function canAdvanceRound(room, playerId) {
@@ -521,6 +723,12 @@ async function handleJoinRoom(request, response) {
 
   const newPlayer = createPlayer(payload.name);
   room.players.push(newPlayer);
+  addChatMessage(room, {
+    playerId: "system",
+    playerName: "Sistema",
+    text: `${newPlayer.name} entrou na sala.`,
+    system: true
+  });
   touchRoom(room);
   broadcastRoom(room);
 
@@ -585,6 +793,12 @@ async function handleLeaveRoom(request, response, roomCode) {
       return;
     }
 
+    addChatMessage(room, {
+      playerId: "system",
+      playerName: "Sistema",
+      text: `${removedPlayer.name} saiu da sala.`,
+      system: true
+    });
     touchRoom(room);
     broadcastRoom(room);
     sendJson(response, 200, { ok: true });
@@ -625,11 +839,199 @@ async function handleKickPlayer(request, response, roomCode, targetPlayerId) {
       return;
     }
 
+    addChatMessage(room, {
+      playerId: "system",
+      playerName: "Sistema",
+      text: `${targetPlayer.name} foi removido da sala.`,
+      system: true
+    });
     touchRoom(room);
     broadcastRoom(room);
 
     sendJson(response, 200, {
       ok: true,
+      state: serializeRoom(room, player.id)
+    });
+  } catch (error) {
+    sendError(response, error.statusCode || 400, error.message);
+  }
+}
+
+async function handleTransferHost(request, response, roomCode, targetPlayerId) {
+  const payload = await collectJson(request);
+
+  try {
+    const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
+    assertHost(room, player.id);
+
+    if (targetPlayerId === player.id) {
+      throw Object.assign(new Error("Escolha outra pessoa para receber o anfitriao."), {
+        statusCode: 409
+      });
+    }
+
+    const targetPlayer = getPlayer(room, targetPlayerId);
+
+    if (!targetPlayer) {
+      throw Object.assign(new Error("Jogador nao encontrado nessa sala."), {
+        statusCode: 404
+      });
+    }
+
+    room.hostId = targetPlayer.id;
+    addChatMessage(room, {
+      playerId: "system",
+      playerName: "Sistema",
+      text: `${targetPlayer.name} agora e o anfitriao da sala.`,
+      system: true
+    });
+    touchRoom(room);
+    broadcastRoom(room);
+
+    sendJson(response, 200, {
+      state: serializeRoom(room, player.id)
+    });
+  } catch (error) {
+    sendError(response, error.statusCode || 400, error.message);
+  }
+}
+
+async function handleUpdateRoomSettings(request, response, roomCode) {
+  const payload = await collectJson(request);
+
+  try {
+    const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
+    assertHost(room, player.id);
+    assertLobby(room);
+
+    room.settings = {
+      cardsPerRound: validateCardsPerRound(
+        payload.cardsPerRound,
+        room.settings?.cardsPerRound ?? DEFAULT_CARDS_PER_ROUND
+      ),
+      timerSeconds: validateTimerSeconds(
+        payload.timerSeconds,
+        room.settings?.timerSeconds ?? DEFAULT_TURN_TIMER_SECONDS
+      )
+    };
+    room.roundCardTotal = getRoundCardTarget(room);
+    touchRoom(room);
+    broadcastRoom(room);
+
+    sendJson(response, 200, {
+      state: serializeRoom(room, player.id)
+    });
+  } catch (error) {
+    sendError(response, error.statusCode || 400, error.message);
+  }
+}
+
+async function handleSendChatMessage(request, response, roomCode) {
+  const payload = await collectJson(request);
+
+  try {
+    const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
+    const message = addChatMessage(room, {
+      playerId: player.id,
+      playerName: player.name,
+      text: payload.text
+    });
+
+    if (!message) {
+      throw Object.assign(new Error("Escreva uma mensagem antes de enviar."), {
+        statusCode: 422
+      });
+    }
+
+    touchRoom(room);
+    broadcastRoom(room);
+
+    sendJson(response, 201, {
+      state: serializeRoom(room, player.id)
+    });
+  } catch (error) {
+    sendError(response, error.statusCode || 400, error.message);
+  }
+}
+
+async function handleChooseResponder(request, response, roomCode) {
+  const payload = await collectJson(request);
+
+  try {
+    const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
+
+    if (room.phase !== "playing" || !room.currentCardId) {
+      throw Object.assign(new Error("Nao existe carta ativa para escolher quem responde."), {
+        statusCode: 409
+      });
+    }
+
+    const currentCard = getCard(room, room.currentCardId);
+
+    if (!currentCard || currentCard.kind !== "choose-player") {
+      throw Object.assign(new Error("A carta atual nao permite escolher quem responde."), {
+        statusCode: 409
+      });
+    }
+
+    if (room.activePlayerId && player.id !== room.activePlayerId) {
+      throw Object.assign(new Error("Somente quem esta na vez pode escolher quem responde."), {
+        statusCode: 403
+      });
+    }
+
+    const targetPlayer = getPlayer(room, payload.responderPlayerId);
+
+    if (!targetPlayer) {
+      throw Object.assign(new Error("Jogador escolhido nao foi encontrado."), {
+        statusCode: 404
+      });
+    }
+
+    room.responderPlayerId = targetPlayer.id;
+    touchRoom(room);
+    broadcastRoom(room);
+
+    sendJson(response, 200, {
+      state: serializeRoom(room, player.id)
+    });
+  } catch (error) {
+    sendError(response, error.statusCode || 400, error.message);
+  }
+}
+
+async function handleSkipResponder(request, response, roomCode) {
+  const payload = await collectJson(request);
+
+  try {
+    const { room, player } = ensureRoomAndPlayer(roomCode, payload.playerId);
+
+    if (room.phase !== "playing" || !room.currentCardId) {
+      throw Object.assign(new Error("Nao existe carta ativa para pular a vez."), {
+        statusCode: 409
+      });
+    }
+
+    const currentCard = getCard(room, room.currentCardId);
+
+    if (!currentCard || currentCard.kind !== "skip-turn") {
+      throw Object.assign(new Error("A carta atual nao permite pular a vez."), {
+        statusCode: 409
+      });
+    }
+
+    if (room.activePlayerId && player.id !== room.activePlayerId) {
+      throw Object.assign(new Error("Somente quem esta na vez pode pular a resposta."), {
+        statusCode: 403
+      });
+    }
+
+    const currentResponderId = room.responderPlayerId || room.activePlayerId || player.id;
+    room.responderPlayerId = getNextPlayerId(room, currentResponderId);
+    touchRoom(room);
+    broadcastRoom(room);
+
+    sendJson(response, 200, {
       state: serializeRoom(room, player.id)
     });
   } catch (error) {
@@ -651,6 +1053,7 @@ async function handleCreateCard(request, response, roomCode) {
       authorId: player.id,
       authorName: player.name
     });
+    room.roundCardTotal = getRoundCardTarget(room);
 
     touchRoom(room);
     broadcastRoom(room);
@@ -680,6 +1083,7 @@ async function handleUpdateCard(request, response, roomCode, cardId) {
     }
 
     Object.assign(card, validateCardInput(payload));
+    room.roundCardTotal = getRoundCardTarget(room);
     touchRoom(room);
     broadcastRoom(room);
 
@@ -708,6 +1112,7 @@ async function handleDeleteCard(request, response, roomCode, cardId) {
     }
 
     room.cards = room.cards.filter((currentCard) => currentCard.id !== cardId);
+    room.roundCardTotal = getRoundCardTarget(room);
     touchRoom(room);
     broadcastRoom(room);
 
@@ -800,12 +1205,16 @@ async function handleLoadDeck(request, response, roomCode, deckId) {
       category: card.category,
       question: card.question,
       color: card.color,
+      kind: validateCardKind(card.kind),
       authorId: player.id,
       authorName: player.name
     }));
     room.currentCardId = null;
     room.drawPile = [];
     room.activePlayerId = null;
+    room.responderPlayerId = null;
+    room.roundCardTotal = getRoundCardTarget(room);
+    clearRoundTimer(room);
     touchRoom(room);
     broadcastRoom(room);
 
@@ -840,12 +1249,16 @@ async function handleImportDeck(request, response, roomCode) {
       category: card.category,
       question: card.question,
       color: card.color,
+      kind: validateCardKind(card.kind),
       authorId: player.id,
       authorName: player.name
     }));
     room.currentCardId = null;
     room.drawPile = [];
     room.activePlayerId = null;
+    room.responderPlayerId = null;
+    room.roundCardTotal = getRoundCardTarget(room);
+    clearRoundTimer(room);
     touchRoom(room);
     broadcastRoom(room);
 
@@ -927,6 +1340,12 @@ async function handleSetReady(request, response, roomCode) {
 
     if (canAutoStartRoom(room)) {
       startRoomRound(room);
+      addChatMessage(room, {
+        playerId: "system",
+        playerName: "Sistema",
+        text: "Todo mundo marcou pronto. A rodada comecou!",
+        system: true
+      });
     }
 
     touchRoom(room);
@@ -952,6 +1371,12 @@ async function handleStartGame(request, response, roomCode) {
     }
 
     startRoomRound(room);
+    addChatMessage(room, {
+      playerId: "system",
+      playerName: "Sistema",
+      text: "A rodada comecou.",
+      system: true
+    });
     touchRoom(room);
     broadcastRoom(room);
 
@@ -985,18 +1410,7 @@ async function handleNextCard(request, response, roomCode) {
       );
     }
 
-    const currentPullerId = room.activePlayerId;
-    room.currentCardId = room.drawPile.shift() || null;
-
-    if (!room.currentCardId) {
-      room.phase = "finished";
-      room.activePlayerId = null;
-    } else if (!room.drawPile.length) {
-      room.activePlayerId = null;
-    } else {
-      room.activePlayerId = getNextPlayerId(room, currentPullerId);
-    }
-
+    advanceRoom(room);
     touchRoom(room);
     broadcastRoom(room);
 
@@ -1019,8 +1433,17 @@ async function handleResetGame(request, response, roomCode) {
     room.currentCardId = null;
     room.drawPile = [];
     room.activePlayerId = null;
+    room.responderPlayerId = null;
+    room.roundCardTotal = getRoundCardTarget(room);
+    clearRoundTimer(room);
     room.players.forEach((currentPlayer) => {
       currentPlayer.isReady = false;
+    });
+    addChatMessage(room, {
+      playerId: "system",
+      playerName: "Sistema",
+      text: "A sala voltou para o lobby.",
+      system: true
     });
     touchRoom(room);
     broadcastRoom(room);
@@ -1077,8 +1500,23 @@ async function handleApi(request, response, pathname, url) {
     return true;
   }
 
+  if (request.method === "POST" && segments[3] === "settings") {
+    await handleUpdateRoomSettings(request, response, roomCode);
+    return true;
+  }
+
+  if (request.method === "POST" && segments[3] === "chat") {
+    await handleSendChatMessage(request, response, roomCode);
+    return true;
+  }
+
   if (request.method === "POST" && segments[3] === "players" && segments[4] && segments[5] === "kick") {
     await handleKickPlayer(request, response, roomCode, segments[4]);
+    return true;
+  }
+
+  if (request.method === "POST" && segments[3] === "players" && segments[4] && segments[5] === "host") {
+    await handleTransferHost(request, response, roomCode, segments[4]);
     return true;
   }
 
@@ -1129,6 +1567,16 @@ async function handleApi(request, response, pathname, url) {
 
   if (segments[3] === "game" && segments[4] === "next" && request.method === "POST") {
     await handleNextCard(request, response, roomCode);
+    return true;
+  }
+
+  if (segments[3] === "game" && segments[4] === "respond" && request.method === "POST") {
+    await handleChooseResponder(request, response, roomCode);
+    return true;
+  }
+
+  if (segments[3] === "game" && segments[4] === "skip" && request.method === "POST") {
+    await handleSkipResponder(request, response, roomCode);
     return true;
   }
 

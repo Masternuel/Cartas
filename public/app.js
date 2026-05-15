@@ -1,8 +1,10 @@
 const SESSION_KEY = "carta-viva-session";
 const LOCAL_DECKS_KEY = "carta-viva-local-decks";
 const LOCAL_CARD_THEME_KEY = "carta-viva-local-card-theme";
+const LOCAL_FAVORITES_KEY = "carta-viva-favorite-cards";
 const AUDIO_VOLUME_KEY = "carta-viva-audio-volume";
 const DEFAULT_AUDIO_VOLUME = 0.05;
+const DEFAULT_CARD_KIND = "question";
 const FINAL_SCREEN_IMAGES = [
   {
     src: "/thanks-finish.png",
@@ -15,6 +17,10 @@ const FINAL_SCREEN_IMAGES = [
   {
     src: "/finish-whatsapp-2.jpeg",
     alt: "Foto final do grupo 2"
+  },
+  {
+    src: "/finish-whatsapp-3.png",
+    alt: "Foto final do grupo 3"
   }
 ];
 const DEFAULT_ROOM_APPEARANCE = {
@@ -212,6 +218,23 @@ const BACKGROUND_PRESETS = [
 ];
 const CARD_THEME_MAP = new Map(CARD_THEME_PRESETS.map((preset) => [preset.id, preset]));
 const BACKGROUND_MAP = new Map(BACKGROUND_PRESETS.map((preset) => [preset.id, preset]));
+const CARD_KIND_META = {
+  question: {
+    label: "Pergunta normal",
+    shortLabel: "Pergunta",
+    description: "Segue a rodada normalmente."
+  },
+  "skip-turn": {
+    label: "Pular sua vez",
+    shortLabel: "Pule a vez",
+    description: "Quem esta na vez pode passar a resposta para a proxima pessoa."
+  },
+  "choose-player": {
+    label: "Escolher quem responde",
+    shortLabel: "Escolha quem responde",
+    description: "Quem esta na vez escolhe outra pessoa para responder essa carta."
+  }
+};
 
 const state = {
   room: null,
@@ -228,9 +251,11 @@ const state = {
   animationToken: 0,
   animationTimer: null,
   animationResetTimer: null,
+  countdownTimer: null,
   audioPrimed: false,
   audioVolume: DEFAULT_AUDIO_VOLUME,
-  localCardThemeId: DEFAULT_ROOM_APPEARANCE.cardThemeId
+  localCardThemeId: DEFAULT_ROOM_APPEARANCE.cardThemeId,
+  favoriteCardKeys: new Set()
 };
 
 const elements = {
@@ -265,12 +290,20 @@ const elements = {
   drawerPlayersCount: document.getElementById("drawer-players-count"),
   drawerPlayersList: document.getElementById("drawer-players-list"),
   drawerBoardCopy: document.getElementById("drawer-board-copy"),
+  settingsCardsPerRound: document.getElementById("settings-cards-per-round"),
+  settingsTimerSeconds: document.getElementById("settings-timer-seconds"),
+  settingsSummary: document.getElementById("settings-summary"),
+  roundSettingsSummary: document.getElementById("round-settings-summary"),
+  chatList: document.getElementById("chat-list"),
+  chatForm: document.getElementById("chat-form"),
+  chatInput: document.getElementById("chat-input"),
   editorTitle: document.getElementById("editor-title"),
   editorPhase: document.getElementById("editor-phase"),
   cardForm: document.getElementById("card-form"),
   cardFormFieldset: document.getElementById("card-form-fieldset"),
   cardTitle: document.getElementById("card-title"),
   cardCategory: document.getElementById("card-category"),
+  cardKind: document.getElementById("card-kind"),
   cardQuestion: document.getElementById("card-question"),
   cardColor: document.getElementById("card-color"),
   deckNameInput: document.getElementById("deck-name"),
@@ -504,6 +537,20 @@ function loadStoredCardThemeId() {
   return DEFAULT_ROOM_APPEARANCE.cardThemeId;
 }
 
+function loadFavoriteCardKeys() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_FAVORITES_KEY) || "[]");
+
+    if (!Array.isArray(parsed)) {
+      return new Set();
+    }
+
+    return new Set(parsed.filter((item) => typeof item === "string" && item));
+  } catch (error) {
+    return new Set();
+  }
+}
+
 function getManagedAudioElements() {
   return [
     elements.shuffleAudio,
@@ -562,6 +609,10 @@ function initializeThemePreferences() {
   state.localCardThemeId = loadStoredCardThemeId();
 }
 
+function initializeFavoritePreferences() {
+  state.favoriteCardKeys = loadFavoriteCardKeys();
+}
+
 function getCardThemePreset(themeId) {
   return CARD_THEME_MAP.get(themeId) || CARD_THEME_MAP.get(DEFAULT_ROOM_APPEARANCE.cardThemeId);
 }
@@ -597,6 +648,77 @@ function applyRoomAppearance(room) {
   elements.pageShell.dataset.backgroundTheme = backgroundTheme.id;
 }
 
+function getRoomSettings(room) {
+  return {
+    cardsPerRound: Number(room?.settings?.cardsPerRound) || 0,
+    timerSeconds: Number(room?.settings?.timerSeconds) || 0
+  };
+}
+
+function formatCardsPerRoundLabel(room) {
+  const settings = getRoomSettings(room);
+  const totalCards = Number(room?.stats?.deckCards) || Number(room?.cards?.length) || 0;
+
+  if (!settings.cardsPerRound || settings.cardsPerRound >= totalCards) {
+    return totalCards > 0 ? `Todas as ${totalCards} cartas` : "Todas as cartas";
+  }
+
+  return `${settings.cardsPerRound} cartas`;
+}
+
+function formatTimerLabel(room) {
+  const settings = getRoomSettings(room);
+
+  if (!settings.timerSeconds) {
+    return "Sem timer";
+  }
+
+  return `${settings.timerSeconds}s por carta`;
+}
+
+function summarizeRoomSettings(room) {
+  return `Partida com ${formatCardsPerRoundLabel(room).toLowerCase()} e ${formatTimerLabel(room).toLowerCase()}.`;
+}
+
+function clearCountdownTicker() {
+  window.clearInterval(state.countdownTimer);
+  state.countdownTimer = null;
+}
+
+function formatCountdownText() {
+  if (!state.room?.stats?.turnEndsAt) {
+    return "";
+  }
+
+  const remainingMs = Math.max(0, state.room.stats.turnEndsAt - Date.now());
+  return `${Math.ceil(remainingMs / 1000)}s`;
+}
+
+function refreshCountdownLabels() {
+  const nextText = formatCountdownText();
+  document.querySelectorAll("[data-turn-countdown]").forEach((element) => {
+    element.textContent = nextText;
+  });
+}
+
+function syncCountdownTicker() {
+  clearCountdownTicker();
+
+  if (!state.room?.stats?.turnEndsAt || state.room.phase !== "playing") {
+    refreshCountdownLabels();
+    return;
+  }
+
+  refreshCountdownLabels();
+  state.countdownTimer = window.setInterval(() => {
+    refreshCountdownLabels();
+
+    if (!state.room?.stats?.turnEndsAt || state.room.stats.turnEndsAt <= Date.now()) {
+      clearCountdownTicker();
+    }
+  }, 250);
+}
+
 function setLocalCardTheme(themeId) {
   const nextThemeId = CARD_THEME_MAP.has(themeId)
     ? themeId
@@ -628,6 +750,47 @@ function normalizeCardColor(value) {
   return /^#([\da-f]{3}|[\da-f]{6})$/i.test(cleaned) ? cleaned : "#c79d51";
 }
 
+function normalizeCardKind(value) {
+  return CARD_KIND_META[value] ? value : DEFAULT_CARD_KIND;
+}
+
+function createCardFavoriteKey(card) {
+  return [
+    normalizeSingleLine(card?.title, 36, "carta"),
+    normalizeSingleLine(card?.category, 24, "pergunta"),
+    normalizeCardKind(card?.kind),
+    normalizeMultiLine(card?.question, 280)
+  ].join("::").toLowerCase();
+}
+
+function persistFavoriteCardKeys() {
+  window.localStorage.setItem(
+    LOCAL_FAVORITES_KEY,
+    JSON.stringify(Array.from(state.favoriteCardKeys))
+  );
+}
+
+function isFavoriteCard(card) {
+  return state.favoriteCardKeys.has(createCardFavoriteKey(card));
+}
+
+function toggleFavoriteCard(card) {
+  const key = createCardFavoriteKey(card);
+
+  if (state.favoriteCardKeys.has(key)) {
+    state.favoriteCardKeys.delete(key);
+  } else {
+    state.favoriteCardKeys.add(key);
+  }
+
+  persistFavoriteCardKeys();
+  render();
+}
+
+function getCardKindMeta(kind) {
+  return CARD_KIND_META[normalizeCardKind(kind)] || CARD_KIND_META[DEFAULT_CARD_KIND];
+}
+
 function createLocalDeckId() {
   if (window.crypto?.randomUUID) {
     return window.crypto.randomUUID();
@@ -642,7 +805,8 @@ function mapCardsForLocalDeck(cards) {
       title: normalizeSingleLine(card.title, 36, "Carta sem titulo"),
       category: normalizeSingleLine(card.category, 24, "Pergunta"),
       question: normalizeMultiLine(card.question, 280),
-      color: normalizeCardColor(card.color)
+      color: normalizeCardColor(card.color),
+      kind: normalizeCardKind(card.kind)
     }))
     .filter((card) => card.question);
 }
@@ -844,6 +1008,14 @@ function currentPlayer() {
   return state.room.players.find((player) => player.id === state.room.viewerId) || null;
 }
 
+function getCurrentResponder(room) {
+  if (!room?.responderPlayerId) {
+    return null;
+  }
+
+  return room.players.find((player) => player.id === room.responderPlayerId) || null;
+}
+
 function setConnectionStatus(mode) {
   state.connection = mode;
   elements.connectionIndicator.classList.remove("live", "offline");
@@ -877,6 +1049,7 @@ function resetEditor() {
   elements.cancelEditButton.classList.add("hidden");
   elements.cardForm.reset();
   elements.cardColor.value = "#c79d51";
+  elements.cardKind.value = DEFAULT_CARD_KIND;
 }
 
 function beginEdit(cardId) {
@@ -896,6 +1069,7 @@ function beginEdit(cardId) {
   elements.cancelEditButton.classList.remove("hidden");
   elements.cardTitle.value = card.title;
   elements.cardCategory.value = card.category;
+  elements.cardKind.value = normalizeCardKind(card.kind);
   elements.cardQuestion.value = card.question;
   elements.cardColor.value = card.color;
   elements.cardQuestion.focus();
@@ -963,6 +1137,7 @@ function applyRoom(snapshot) {
   }
 
   syncLobbyAudio();
+  syncCountdownTicker();
   render();
 }
 
@@ -1006,6 +1181,7 @@ function disconnectFromRoom(clearRemote = true) {
   const activeSession = session();
   closeEventStream();
   clearTableAnimationTimers();
+  clearCountdownTicker();
   stopAudio(elements.shuffleAudio);
   stopAudio(elements.drawAudio);
   stopAudio(elements.finishAudio);
@@ -1295,6 +1471,142 @@ async function handleKickPlayer(targetPlayer) {
   }
 }
 
+async function handleTransferHost(targetPlayer) {
+  if (!state.room || !state.room.isHost || !targetPlayer || targetPlayer.id === state.room.viewerId) {
+    return;
+  }
+
+  const confirmed = window.confirm(`Transferir o anfitriao para ${targetPlayer.name}?`);
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const payload = await api(`/api/rooms/${state.room.roomCode}/players/${targetPlayer.id}/host`, {
+      method: "POST",
+      body: {
+        playerId: state.room.viewerId
+      }
+    });
+
+    if (payload?.state) {
+      applyRoom(payload.state);
+    }
+
+    showToast(`${targetPlayer.name} agora e o anfitriao.`);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function handleRoomSettingsChange(partialSettings = {}) {
+  if (!state.room) {
+    return;
+  }
+
+  if (!state.room.isHost || state.room.phase !== "lobby") {
+    showToast("Somente o anfitriao pode alterar a configuracao no lobby.");
+    return;
+  }
+
+  try {
+    const currentSettings = getRoomSettings(state.room);
+    const payload = await api(`/api/rooms/${state.room.roomCode}/settings`, {
+      method: "POST",
+      body: {
+        playerId: state.room.viewerId,
+        cardsPerRound:
+          partialSettings.cardsPerRound ?? currentSettings.cardsPerRound,
+        timerSeconds:
+          partialSettings.timerSeconds ?? currentSettings.timerSeconds
+      }
+    });
+
+    if (payload?.state) {
+      applyRoom(payload.state);
+    }
+
+    showToast("Configuracao da rodada atualizada.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function handleChatSubmit(event) {
+  event.preventDefault();
+
+  if (!state.room) {
+    return;
+  }
+
+  const text = elements.chatInput.value.trim();
+
+  if (!text) {
+    return;
+  }
+
+  try {
+    const payload = await api(`/api/rooms/${state.room.roomCode}/chat`, {
+      method: "POST",
+      body: {
+        playerId: state.room.viewerId,
+        text
+      }
+    });
+
+    elements.chatInput.value = "";
+
+    if (payload?.state) {
+      applyRoom(payload.state);
+    }
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function handleChooseResponder(targetPlayerId) {
+  if (!state.room) {
+    return;
+  }
+
+  try {
+    const payload = await api(`/api/rooms/${state.room.roomCode}/game/respond`, {
+      method: "POST",
+      body: {
+        playerId: state.room.viewerId,
+        responderPlayerId: targetPlayerId
+      }
+    });
+
+    if (payload?.state) {
+      applyRoom(payload.state);
+    }
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function handleSkipTurnCard() {
+  if (!state.room) {
+    return;
+  }
+
+  try {
+    const payload = await api(`/api/rooms/${state.room.roomCode}/game/skip`, {
+      method: "POST",
+      body: {
+        playerId: state.room.viewerId
+      }
+    });
+
+    if (payload?.state) {
+      applyRoom(payload.state);
+    }
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 function createTableCardPanel(label, cardElement, hint, variant = "") {
   const panel = document.createElement("div");
   panel.className = "table-card-panel";
@@ -1315,6 +1627,64 @@ function createTableCardPanel(label, cardElement, hint, variant = "") {
   }
 
   return panel;
+}
+
+function formatChatTimestamp(value) {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(new Date(value));
+  } catch (error) {
+    return "";
+  }
+}
+
+function renderChat(room) {
+  elements.chatList.replaceChildren();
+  const messages = Array.isArray(room.chatMessages) ? room.chatMessages : [];
+
+  if (!messages.length) {
+    const emptyState = document.createElement("article");
+    emptyState.className = "chat-message chat-message--system";
+    emptyState.append(createTextElement("strong", "Chat da sala"));
+    emptyState.append(
+      createTextElement(
+        "p",
+        "As mensagens da sala aparecem aqui para todo mundo acompanhar."
+      )
+    );
+    elements.chatList.append(emptyState);
+    return;
+  }
+
+  messages.forEach((message) => {
+    const card = document.createElement("article");
+    card.className = "chat-message";
+
+    if (message.system) {
+      card.classList.add("chat-message--system");
+    } else if (message.playerId === room.viewerId) {
+      card.classList.add("chat-message--self");
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "chat-message__meta";
+    meta.append(createTextElement("strong", message.playerName || "Sala"));
+    meta.append(createTextElement("span", formatChatTimestamp(message.createdAt)));
+
+    card.append(meta);
+    card.append(createTextElement("p", message.text || "", "chat-message__text"));
+    elements.chatList.append(card);
+  });
+
+  window.requestAnimationFrame(() => {
+    elements.chatList.scrollTop = elements.chatList.scrollHeight;
+  });
 }
 
 function createFinishScreen() {
@@ -1393,6 +1763,7 @@ function renderPlayers(room) {
   elements.playersCount.textContent = String(room.players.length);
   elements.drawerPlayersCount.textContent = String(room.players.length);
   const activePlayer = getActivePlayer(room);
+  const responder = getCurrentResponder(room);
 
   room.players.forEach((player) => {
     const row = document.createElement("article");
@@ -1425,6 +1796,10 @@ function renderPlayers(room) {
       labels.append(createTextElement("span", "Na vez", "host-badge host-badge--active"));
     }
 
+    if (responder?.id === player.id && room.phase === "playing") {
+      labels.append(createTextElement("span", "Responde", "host-badge"));
+    }
+
     if (room.phase === "lobby" && player.isReady) {
       labels.append(createTextElement("span", "Pronto", "host-badge host-badge--ready"));
     }
@@ -1438,11 +1813,18 @@ function renderPlayers(room) {
     actions.append(labels);
 
     if (room.isHost && player.id !== room.viewerId) {
+      const hostButton = createTextElement("button", "Passar host", "mini-btn mini-btn--accent");
+      hostButton.type = "button";
+      hostButton.addEventListener("click", () => {
+        handleTransferHost(player);
+      });
+
       const kickButton = createTextElement("button", "Kikar", "mini-btn mini-btn--danger");
       kickButton.type = "button";
       kickButton.addEventListener("click", () => {
         handleKickPlayer(player);
       });
+      actions.append(hostButton);
       actions.append(kickButton);
     }
 
@@ -1478,6 +1860,10 @@ function renderPlayers(room) {
       drawerLabels.append(createTextElement("span", "Na vez", "host-badge host-badge--active"));
     }
 
+    if (responder?.id === player.id && room.phase === "playing") {
+      drawerLabels.append(createTextElement("span", "Responde", "host-badge"));
+    }
+
     if (room.phase === "lobby" && player.isReady) {
       drawerLabels.append(createTextElement("span", "Pronto", "host-badge host-badge--ready"));
     }
@@ -1491,11 +1877,18 @@ function renderPlayers(room) {
     drawerActions.append(drawerLabels);
 
     if (room.isHost && player.id !== room.viewerId) {
+      const drawerHostButton = createTextElement("button", "Passar host", "mini-btn mini-btn--accent");
+      drawerHostButton.type = "button";
+      drawerHostButton.addEventListener("click", () => {
+        handleTransferHost(player);
+      });
+
       const drawerKickButton = createTextElement("button", "Kikar", "mini-btn mini-btn--danger");
       drawerKickButton.type = "button";
       drawerKickButton.addEventListener("click", () => {
         handleKickPlayer(player);
       });
+      drawerActions.append(drawerHostButton);
       drawerActions.append(drawerKickButton);
     }
 
@@ -1510,6 +1903,9 @@ function renderCurrentCard(room) {
   tableStage.className = "table-stage";
   tableStage.classList.toggle("is-shuffling", state.tableAnimation === "shuffle");
   tableStage.classList.toggle("is-revealing-card", state.tableAnimation === "reveal");
+  const activePlayer = getActivePlayer(room);
+  const responder = getCurrentResponder(room);
+  const currentCardKindMeta = getCardKindMeta(room.currentCard?.kind);
 
   const playersLayer = document.createElement("div");
   playersLayer.className = "table-players-layer";
@@ -1546,9 +1942,15 @@ function renderCurrentCard(room) {
     });
   } else if (room.currentCard) {
     faceUpCard = createFrontCard({
-      categoryText: room.currentCard.category || "Pergunta",
+      categoryText: room.currentCard.category || currentCardKindMeta.shortLabel,
       titleText: room.currentCard.title,
-      questionText: room.currentCard.question
+      questionText: room.currentCard.question,
+      noteText:
+        room.currentCard.kind !== DEFAULT_CARD_KIND
+          ? currentCardKindMeta.description
+          : responder
+            ? `Responde agora: ${responder.name}`
+            : ""
     });
   } else {
     faceUpCard = createFrontCard({
@@ -1584,12 +1986,149 @@ function renderCurrentCard(room) {
     pileElement.classList.add("is-drawing");
   }
 
+  const centerContent = document.createElement("div");
+  centerContent.className = "table-center__content";
+
   const cardsRow = document.createElement("div");
   cardsRow.className = "table-center-cards";
   cardsRow.append(createTableCardPanel("", faceUpCard, "", "open"));
   cardsRow.append(createTableCardPanel("", pileElement, "", "pile"));
+  centerContent.append(cardsRow);
 
-  center.append(cardsRow);
+  if (room.phase === "playing" && room.currentCard) {
+    const actionStrip = document.createElement("section");
+    actionStrip.className = "table-action-strip";
+
+    const infoPills = document.createElement("div");
+    infoPills.className = "table-info-pills";
+
+    const kindPill = document.createElement("span");
+    kindPill.className = "table-info-pill";
+    kindPill.append(createTextElement("strong", currentCardKindMeta.shortLabel));
+    kindPill.append(createTextElement("span", currentCardKindMeta.description));
+    infoPills.append(kindPill);
+
+    if (activePlayer) {
+      const turnPill = document.createElement("span");
+      turnPill.className = "table-info-pill";
+      turnPill.append(createTextElement("strong", "Na vez"));
+      turnPill.append(createTextElement("span", activePlayer.name));
+      infoPills.append(turnPill);
+    }
+
+    if (responder) {
+      const responderPill = document.createElement("span");
+      responderPill.className = "table-info-pill";
+      responderPill.append(createTextElement("strong", "Responde"));
+      responderPill.append(createTextElement("span", responder.name));
+      infoPills.append(responderPill);
+    }
+
+    if (room.stats.turnEndsAt) {
+      const timerPill = document.createElement("span");
+      timerPill.className = "table-info-pill table-info-pill--timer";
+      timerPill.append(createTextElement("strong", "Timer"));
+
+      const timerValue = createTextElement("span", formatCountdownText(), "table-countdown-value");
+      timerValue.setAttribute("data-turn-countdown", "");
+      timerPill.append(timerValue);
+      infoPills.append(timerPill);
+    }
+
+    actionStrip.append(infoPills);
+
+    if (room.currentCard.kind === "skip-turn") {
+      const specialActions = document.createElement("div");
+      specialActions.className = "table-special-actions";
+
+      if (room.viewerId === room.activePlayerId) {
+        specialActions.append(
+          createTextElement(
+            "p",
+            "Essa carta permite pular a resposta para a proxima pessoa da mesa.",
+            "table-special-copy"
+          )
+        );
+
+        const skipButton = createTextElement(
+          "button",
+          "Passar resposta para a proxima pessoa",
+          "secondary-btn"
+        );
+        skipButton.type = "button";
+        skipButton.addEventListener("click", handleSkipTurnCard);
+        specialActions.append(skipButton);
+      } else if (activePlayer) {
+        specialActions.append(
+          createTextElement(
+            "p",
+            `${activePlayer.name} pode usar essa carta para passar a resposta.`,
+            "table-special-copy"
+          )
+        );
+      }
+
+      actionStrip.append(specialActions);
+    }
+
+    if (room.currentCard.kind === "choose-player") {
+      const specialActions = document.createElement("div");
+      specialActions.className = "table-special-actions";
+
+      if (room.viewerId === room.activePlayerId) {
+        specialActions.append(
+          createTextElement(
+            "p",
+            "Escolha abaixo quem deve responder esta carta.",
+            "table-special-copy"
+          )
+        );
+
+        const playerChoices = document.createElement("div");
+        playerChoices.className = "table-special-actions__grid";
+
+        room.players.forEach((player) => {
+          const button = createTextElement("button", player.name, "mini-btn");
+          button.type = "button";
+
+          if (room.responderPlayerId === player.id) {
+            button.classList.add("mini-btn--accent");
+          }
+
+          button.addEventListener("click", () => {
+            handleChooseResponder(player.id);
+          });
+          playerChoices.append(button);
+        });
+
+        specialActions.append(playerChoices);
+      } else if (activePlayer) {
+        specialActions.append(
+          createTextElement(
+            "p",
+            `${activePlayer.name} esta escolhendo quem vai responder essa carta.`,
+            "table-special-copy"
+          )
+        );
+      }
+
+      actionStrip.append(specialActions);
+    }
+
+    if (!room.activePlayerId) {
+      actionStrip.append(
+        createTextElement(
+          "p",
+          "Essa foi a ultima carta. Clique no monte preto para encerrar a rodada.",
+          "table-special-copy"
+        )
+      );
+    }
+
+    centerContent.append(actionStrip);
+  }
+
+  center.append(centerContent);
   tableStage.append(playersLayer, counter, center);
 
   if (room.phase === "lobby") {
@@ -1650,32 +2189,60 @@ function renderDeck(room) {
   room.cards.forEach((card) => {
     const item = document.createElement("article");
     item.className = "deck-entry";
+    const isFavorite = isFavoriteCard(card);
+    const kindMeta = getCardKindMeta(card.kind);
+
+    if (isFavorite) {
+      item.classList.add("is-favorite");
+    }
 
     const front = createFrontCard({
       compact: true,
-      categoryText: card.category || "Pergunta",
+      categoryText: card.category || kindMeta.shortLabel,
       titleText: card.title,
-      questionText: card.question
+      questionText: card.question,
+      noteText: kindMeta.shortLabel
     });
 
     item.append(createCardStack(front, true));
 
     const toolbar = document.createElement("div");
     toolbar.className = "deck-entry__toolbar";
-    toolbar.append(
+
+    const meta = document.createElement("div");
+    meta.className = "deck-entry__meta";
+    meta.append(createTextElement("span", kindMeta.label, "card-label card-label--soft"));
+    meta.append(
       createTextElement(
         "span",
         room.phase === "lobby"
-          ? "Use o verso escuro para embaralhar e a frente clara para ler a pergunta."
+          ? kindMeta.description
           : "Carta bloqueada durante a rodada.",
         "deck-entry__hint"
       )
     );
+    toolbar.append(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "deck-entry__actions";
+
+    const favoriteButton = createTextElement(
+      "button",
+      isFavorite ? "Favorita" : "Favoritar",
+      "mini-btn mini-btn--favorite"
+    );
+    favoriteButton.type = "button";
+
+    if (isFavorite) {
+      favoriteButton.classList.add("is-active");
+    }
+
+    favoriteButton.addEventListener("click", () => {
+      toggleFavoriteCard(card);
+    });
+    actions.append(favoriteButton);
 
     if (room.phase === "lobby" && (card.canEdit || card.canDelete)) {
-      const actions = document.createElement("div");
-      actions.className = "deck-entry__actions";
-
       if (card.canEdit) {
         const editButton = createTextElement("button", "Editar", "mini-btn");
         editButton.type = "button";
@@ -1698,10 +2265,9 @@ function renderDeck(room) {
         });
         actions.append(deleteButton);
       }
-
-      toolbar.append(actions);
     }
 
+    toolbar.append(actions);
     item.append(toolbar);
 
     elements.deckList.append(item);
@@ -1839,21 +2405,25 @@ function renderSavedDecks(room) {
 
 function renderBoardCopy(room) {
   const activePlayer = getActivePlayer(room);
+  const responder = getCurrentResponder(room);
+  const settingsSummary = summarizeRoomSettings(room);
 
   if (room.phase === "lobby") {
     elements.boardTitle.textContent = "Prepare a mesa e distribua os jogadores";
     elements.boardSubtitle.textContent =
-      "Edite cartas, escolha o tema e deixe todos marcarem pronto. Quando a sala inteira confirmar, a rodada comeca automaticamente.";
+      `Edite cartas, escolha o tema e deixe todos marcarem pronto. ${settingsSummary} Quando a sala inteira confirmar, a rodada comeca automaticamente.`;
     return;
   }
 
   if (room.phase === "playing") {
-    elements.boardTitle.textContent = activePlayer
-      ? `${activePlayer.name} esta na vez`
-      : "Rodada em andamento";
+    elements.boardTitle.textContent = responder
+      ? `${responder.name} responde agora`
+      : activePlayer
+        ? `${activePlayer.name} esta na vez`
+        : "Rodada em andamento";
     elements.boardSubtitle.textContent =
       room.currentCard
-        ? "Leia a pergunta aberta no centro da mesa e avance para a proxima vez quando o grupo terminar."
+        ? `${getCardKindMeta(room.currentCard.kind).description} ${settingsSummary} Clique no monte preto para virar a proxima carta.`
         : "A rodada esta fechando. Avance para encerrar.";
     return;
   }
@@ -1886,6 +2456,7 @@ function render() {
   }
 
   renderPlayers(room);
+  renderChat(room);
   renderCurrentCard(room);
   renderDeck(room);
   renderSavedDecks(room);
@@ -1908,6 +2479,8 @@ function render() {
   elements.startRevealedCardsStat.textContent = String(room.stats.revealedCards);
   elements.startRemainingCardsStat.textContent = String(room.stats.remainingCards);
   elements.drawerBoardCopy.textContent = elements.boardSubtitle.textContent;
+  elements.settingsSummary.textContent = summarizeRoomSettings(room);
+  elements.roundSettingsSummary.textContent = summarizeRoomSettings(room);
 
   const deckEditable = room.phase === "lobby";
   elements.cardFormFieldset.disabled = !deckEditable;
@@ -1918,6 +2491,11 @@ function render() {
   elements.exportDeckButton.disabled = room.cards.length === 0;
   elements.importDeckButton.disabled = !room.isHost || !deckEditable;
   elements.importDeckFile.disabled = !room.isHost || !deckEditable;
+  elements.settingsCardsPerRound.value = String(getRoomSettings(room).cardsPerRound);
+  elements.settingsTimerSeconds.value = String(getRoomSettings(room).timerSeconds);
+  elements.settingsCardsPerRound.disabled = !room.isHost || !deckEditable;
+  elements.settingsTimerSeconds.disabled = !room.isHost || !deckEditable;
+  elements.chatInput.disabled = false;
 
   if (!deckEditable) {
     elements.editorTitle.textContent = "Baralho bloqueado durante a rodada";
@@ -1999,6 +2577,7 @@ async function handleCardSubmit(event) {
     playerId: state.room.viewerId,
     title: elements.cardTitle.value,
     category: elements.cardCategory.value,
+    kind: elements.cardKind.value,
     question: elements.cardQuestion.value,
     color: elements.cardColor.value
   };
@@ -2083,6 +2662,17 @@ function renderSavedDecks(room) {
     actions.className = "saved-deck-card__actions";
 
     const canManage = room.isHost && room.phase === "lobby";
+
+    const exportButton = createTextElement("button", "Exportar", "mini-btn");
+    exportButton.type = "button";
+    exportButton.addEventListener("click", () => {
+      try {
+        downloadDeckJson(deck.name, deck.cards || [], "browser-library");
+        showToast(`Deck ${deck.name} exportado em JSON.`);
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
 
     const loadButton = createTextElement("button", "Carregar", "mini-btn");
     loadButton.type = "button";
@@ -2413,6 +3003,7 @@ function bindEvents() {
   elements.createRoomForm.addEventListener("submit", handleCreateRoom);
   elements.joinRoomForm.addEventListener("submit", handleJoinRoom);
   elements.cardForm.addEventListener("submit", handleCardSubmit);
+  elements.chatForm.addEventListener("submit", handleChatSubmit);
   elements.saveDeckButton.addEventListener("click", handleSaveDeck);
   elements.exportDeckButton.addEventListener("click", handleExportCurrentDeck);
   elements.importDeckButton.addEventListener("click", () => {
@@ -2426,6 +3017,16 @@ function bindEvents() {
     setAudioVolume(Number(event.currentTarget.value) / 100);
   });
   elements.cancelEditButton.addEventListener("click", resetEditor);
+  elements.settingsCardsPerRound.addEventListener("change", (event) => {
+    handleRoomSettingsChange({
+      cardsPerRound: Number(event.currentTarget.value)
+    });
+  });
+  elements.settingsTimerSeconds.addEventListener("change", (event) => {
+    handleRoomSettingsChange({
+      timerSeconds: Number(event.currentTarget.value)
+    });
+  });
   elements.openRoomMenuButton.addEventListener("click", () => setRoomMenuOpen(!state.menuOpen));
   elements.closeRoomMenuButton.addEventListener("click", () => setRoomMenuOpen(false));
   elements.roomMenuOverlay.addEventListener("click", () => setRoomMenuOpen(false));
@@ -2475,6 +3076,7 @@ function bindEvents() {
 
 initializeAudioPreferences();
 initializeThemePreferences();
+initializeFavoritePreferences();
 hydrateInviteCodeFromUrl();
 bindEvents();
 attemptReconnect();
